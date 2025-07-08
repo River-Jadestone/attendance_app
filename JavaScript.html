@@ -1,70 +1,83 @@
 <script>
-    let currentStudentName = '';
+    let currentStudentId = null;
+    let searchedName = '';
 
     function showLoading() { document.getElementById('loading').style.display = 'block'; }
     function hideLoading() { document.getElementById('loading').style.display = 'none'; }
 
-    function searchStudent() {
-        const name = document.getElementById('search-name').value.trim();
-        if (!name) {
+    function showSection(sectionId) {
+        ['search-section', 'search-results-section', 'add-student-section', 'student-details'].forEach(id => {
+            document.getElementById(id).style.display = (id === sectionId) ? 'block' : 'none';
+        });
+    }
+
+    function searchStudents() {
+        searchedName = document.getElementById('search-name').value.trim();
+        if (!searchedName) {
             alert('학생 이름을 입력해주세요.');
             return;
         }
         showLoading();
         google.script.run
-            .withSuccessHandler(displayStudentDetails)
+            .withSuccessHandler(displaySearchResults)
             .withFailureHandler(handleError)
-            .getStudentDetails(name);
+            .searchStudentsByName(searchedName);
     }
 
-    function showAddStudentForm() {
-        document.getElementById('search-section').style.display = 'none';
-        document.getElementById('add-student-form').style.display = 'block';
-        document.getElementById('new-student-name').value = document.getElementById('search-name').value;
-    }
-
-    function hideAddStudentForm() {
-        document.getElementById('search-section').style.display = 'block';
-        document.getElementById('add-student-form').style.display = 'none';
-        document.getElementById('new-student-name').value = '';
+    function displaySearchResults(results) {
+        hideLoading();
+        if (results.length === 0) {
+            document.getElementById('new-student-name-confirm').innerText = `'${searchedName}'`;
+            showSection('add-student-section');
+        } else if (results.length === 1) {
+            getStudentDetails(results[0].id);
+        } else {
+            const list = document.getElementById('search-results-list');
+            list.innerHTML = '';
+            results.forEach(student => {
+                const item = document.createElement('li');
+                item.textContent = `${student.name} (담당: ${student.teacher || '미지정'}, ID: ${student.id})`;
+                item.style.cursor = 'pointer';
+                item.onclick = () => getStudentDetails(student.id);
+                list.appendChild(item);
+            });
+            showSection('search-results-section');
+        }
     }
 
     function addStudent() {
-        const name = document.getElementById('new-student-name').value.trim();
-        if (!name) {
-            alert('학생 이름을 입력해주세요.');
-            return;
-        }
         showLoading();
         google.script.run
             .withSuccessHandler(response => {
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    hideAddStudentForm();
-                    document.getElementById('search-name').value = name;
-                    searchStudent();
+                    getStudentDetails(response.newStudent.id);
                 }
             })
             .withFailureHandler(handleError)
-            .addStudent({ name: name });
+            .addStudent({ name: searchedName });
+    }
+
+    function getStudentDetails(id) {
+        showLoading();
+        google.script.run
+            .withSuccessHandler(displayStudentDetails)
+            .withFailureHandler(handleError)
+            .getStudentDetails(id);
     }
 
     function displayStudentDetails(details) {
         hideLoading();
         if (!details) {
-            if (confirm('해당 학생을 찾을 수 없습니다. 신규 학생으로 추가하시겠습니까?')) {
-                showAddStudentForm();
-            }
+            alert('학생 정보를 불러오는 데 실패했습니다.');
+            goBackToSearch();
             return;
         }
 
-        currentStudentName = details.info.name;
-        document.getElementById('search-section').style.display = 'none';
-        document.getElementById('add-student-form').style.display = 'none';
-        document.getElementById('student-details').style.display = 'block';
-
-        document.getElementById('student-name-header').innerText = `${details.info.name} 학생 정보`;
+        currentStudentId = details.info.id;
+        document.getElementById('student-name-header').innerText = `${details.info.name} (ID: ${details.info.id}) 학생 정보`;
+        document.getElementById('name').value = details.info.name;
         document.getElementById('teacher').value = details.info.teacher;
         document.getElementById('materials').value = details.info.materials;
         document.getElementById('progress-history').innerText = details.info.progress;
@@ -76,23 +89,10 @@
         if (details.attendanceSummary && details.attendanceSummary.length > 0) {
             details.attendanceSummary.forEach(summary => {
                 const row = summaryTbody.insertRow();
-                const cellMonth = row.insertCell();
-                const cellCount = row.insertCell();
-                
-                cellMonth.innerText = summary.month;
-                cellCount.innerText = `${summary.count}회 / 4회`;
-                
-                if (summary.count >= 4) {
-                    cellCount.style.color = 'green';
-                    cellCount.style.fontWeight = 'bold';
-                }
+                row.innerHTML = `<td>${summary.month}</td><td style="color: ${summary.count >= 4 ? 'green' : 'inherit'}; font-weight: ${summary.count >= 4 ? 'bold' : 'normal'};">${summary.count}회 / 4회</td>`;
             });
         } else {
-            const row = summaryTbody.insertRow();
-            const cell = row.insertCell();
-            cell.colSpan = 2;
-            cell.innerText = '출석 기록이 없습니다.';
-            cell.style.textAlign = 'center';
+            summaryTbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">출석 기록이 없습니다.</td></tr>';
         }
 
         const attendanceTbody = document.getElementById('attendance-table').getElementsByTagName('tbody')[0];
@@ -102,43 +102,8 @@
         const paymentTbody = document.getElementById('payment-table').getElementsByTagName('tbody')[0];
         paymentTbody.innerHTML = '';
         if(details.payment) details.payment.forEach(pay => addPaymentRow(pay.month, pay.status));
-    }
-
-    function addAttendanceRow(date = '', status = '출석') {
-        const table = document.getElementById('attendance-table').getElementsByTagName('tbody')[0];
-        const newRow = table.insertRow(0);
-        newRow.innerHTML = `
-            <td><input type="date" value="${formatDate(date)}"></td>
-            <td>
-                <select>
-                    <option value="출석" ${status === '출석' ? 'selected' : ''}>출석</option>
-                    <option value="결석" ${status === '결석' ? 'selected' : ''}>결석</option>
-                    <option value="보강" ${status === '보강' ? 'selected' : ''}>보강</option>
-                </select>
-            </td>
-            <td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>
-        `;
-    }
-
-    function addPaymentRow(month = '', status = '미납') {
-        const table = document.getElementById('payment-table').getElementsByTagName('tbody')[0];
-        const newRow = table.insertRow(0);
-        newRow.innerHTML = `
-            <td><input type="text" placeholder="예: 2025-07" value="${month}"></td>
-            <td>
-                <select>
-                    <option value="완납" ${status === '완납' ? 'selected' : ''}>완납</option>
-                    <option value="미납" ${status === '미납' ? 'selected' : ''}>미납</option>
-                    <option value="상담" ${status === '상담' ? 'selected' : ''}>상담</option>
-                </select>
-            </td>
-            <td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>
-        `;
-    }
-    
-    function deleteRow(btn) {
-        const row = btn.parentNode.parentNode;
-        row.parentNode.removeChild(row);
+        
+        showSection('student-details');
     }
 
     function saveChanges() {
@@ -146,7 +111,8 @@
         
         showLoading();
         const details = {
-            name: currentStudentName,
+            id: currentStudentId,
+            name: document.getElementById('name').value,
             teacher: document.getElementById('teacher').value,
             materials: document.getElementById('materials').value,
             newProgress: document.getElementById('new-progress').value,
@@ -155,34 +121,22 @@
             payment: []
         };
 
-        const attendanceRows = document.getElementById('attendance-table').getElementsByTagName('tbody')[0].rows;
-        for (let row of attendanceRows) {
-            const dateInput = row.cells[0].getElementsByTagName('input')[0].value;
-            if(dateInput) {
-                 details.attendance.push({
-                    date: dateInput,
-                    status: row.cells[1].getElementsByTagName('select')[0].value
-                });
-            }
-        }
+        Array.from(document.getElementById('attendance-table').rows).slice(1).forEach(row => {
+            const dateInput = row.cells[0].querySelector('input').value;
+            if(dateInput) details.attendance.push({ date: dateInput, status: row.cells[1].querySelector('select').value });
+        });
 
-        const paymentRows = document.getElementById('payment-table').getElementsByTagName('tbody')[0].rows;
-        for (let row of paymentRows) {
-            const monthInput = row.cells[0].getElementsByTagName('input')[0].value;
-            if(monthInput) {
-                details.payment.push({
-                    month: monthInput,
-                    status: row.cells[1].getElementsByTagName('select')[0].value
-                });
-            }
-        }
+        Array.from(document.getElementById('payment-table').rows).slice(1).forEach(row => {
+            const monthInput = row.cells[0].querySelector('input').value;
+            if(monthInput) details.payment.push({ month: monthInput, status: row.cells[1].querySelector('select').value });
+        });
 
         google.script.run
             .withSuccessHandler(response => {
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    searchStudent(); 
+                    getStudentDetails(currentStudentId); // 저장 후 정보 새로고침
                 }
             })
             .withFailureHandler(handleError)
@@ -190,29 +144,26 @@
     }
 
     function goBackToSearch() {
-        document.getElementById('student-details').style.display = 'none';
-        document.getElementById('search-section').style.display = 'block';
         document.getElementById('search-name').value = '';
-        currentStudentName = '';
+        currentStudentId = null;
+        searchedName = '';
+        showSection('search-section');
     }
 
-    function handleError(error) {
-        hideLoading();
-        alert('오류가 발생했습니다: ' + error.message);
+    // --- 행 추가/삭제 및 유틸리티 함수 (이전과 거의 동일) ---
+    function addAttendanceRow(date = '', status = '출석') {
+        const newRow = document.getElementById('attendance-table').getElementsByTagName('tbody')[0].insertRow(0);
+        newRow.innerHTML = `<td><input type="date" value="${formatDate(date)}"></td><td><select><option value="출석" ${status === '출석' ? 'selected' : ''}>출석</option><option value="결석" ${status === '결석' ? 'selected' : ''}>결석</option><option value="보강" ${status === '보강' ? 'selected' : ''}>보강</option></select></td><td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>`;
     }
-
+    function addPaymentRow(month = '', status = '미납') {
+        const newRow = document.getElementById('payment-table').getElementsByTagName('tbody')[0].insertRow(0);
+        newRow.innerHTML = `<td><input type="text" placeholder="예: 2025-07" value="${month}"></td><td><select><option value="완납" ${status === '완납' ? 'selected' : ''}>완납</option><option value="미납" ${status === '미납' ? 'selected' : ''}>미납</option><option value="상담" ${status === '상담' ? 'selected' : ''}>상담</option></select></td><td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>`;
+    }
+    function deleteRow(btn) { btn.closest('tr').remove(); }
+    function handleError(error) { hideLoading(); alert('오류가 발생했습니다: ' + error.message); }
     function formatDate(dateString) {
         if (!dateString) return new Date().toISOString().slice(0, 10);
-        try {
-            return new Date(dateString).toISOString().slice(0, 10);
-        } catch (e) {
-            return '';
-        }
+        try { return new Date(dateString).toISOString().slice(0, 10); } catch (e) { return ''; }
     }
-
-    document.getElementById('search-name').addEventListener('keyup', function(event) {
-        if (event.key === 'Enter') {
-            searchStudent();
-        }
-    });
+    document.getElementById('search-name').addEventListener('keyup', e => e.key === 'Enter' && searchStudents());
 </script>
