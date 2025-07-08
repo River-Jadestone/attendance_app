@@ -52,7 +52,10 @@
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    getStudentDetails(response.newStudent.id);
+                    // [수정] 학생 추가 후, 1초간의 지연을 주어 서버가 데이터를 완전히 처리할 시간을 줍니다.
+                    setTimeout(() => {
+                        getStudentDetails(response.newStudent.id);
+                    }, 1000); // 1000밀리초 = 1초
                 }
             })
             .withFailureHandler(handleError)
