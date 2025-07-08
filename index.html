@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>출석 관리 시스템</title>
+    <?!= include('CSS'); ?>
+</head>
+<body>
+    <div class="container">
+        <h1>출석 관리 시스템</h1>
+
+        <!-- 학생 검색 및 추가 -->
+        <div id="search-section">
+            <h2>학생 검색</h2>
+            <div class="form-group">
+                <label for="search-name">학생 이름</label>
+                <input type="text" id="search-name" placeholder="이름을 입력하고 Enter 또는 검색 버튼 클릭">
+            </div>
+            <button onclick="searchStudent()">검색</button>
+            <button class="btn-add" onclick="showAddStudentForm()">신규 학생 추가</button>
+        </div>
+
+        <!-- 신규 학생 추가 폼 (숨김) -->
+        <div id="add-student-form" style="display:none;">
+            <h2>신규 학생 추가</h2>
+            <div class="form-group">
+                <label for="new-student-name">이름</label>
+                <input type="text" id="new-student-name">
+            </div>
+            <button onclick="addStudent()">추가</button>
+            <button class="btn-cancel" onclick="hideAddStudentForm()">취소</button>
+        </div>
+
+        <!-- 로딩 스피너 -->
+        <div id="loading">
+            <p>처리 중...</p>
+        </div>
+
+        <!-- 학생 상세 정보 -->
+        <div id="student-details">
+            <h2 id="student-name-header"></h2>
+            <form id="details-form">
+                <div class="form-group">
+                    <label for="teacher">담당교사</label>
+                    <input type="text" id="teacher">
+                </div>
+                <div class="form-group">
+                    <label for="materials">사용교구</label>
+                    <input type="text" id="materials">
+                </div>
+                <div class="form-group">
+                    <label for="progress">진도</label>
+                    <input type="text" id="progress">
+                </div>
+                <div class="form-group">
+                    <label for="notes">특이사항</label>
+                    <textarea id="notes" rows="3"></textarea>
+                </div>
+
+                <h3>출석 정보 <button type="button" class="btn-add" onclick="addAttendanceRow()">+</button></h3>
+                <table id="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>상태</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+
+                <h3>교육비 납부 정보 <button type="button" class="btn-add" onclick="addPaymentRow()">+</button></h3>
+                <table id="payment-table">
+                    <thead>
+                        <tr>
+                            <th>납부월</th>
+                            <th>납부상태</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+
+                <br><br>
+                <button type="button" onclick="saveChanges()">저장</button>
+                <button type="button" class="btn-cancel" onclick="goBackToSearch()">뒤로가기</button>
+            </form>
+        </div>
+    </div>
+
+    <?!= include('JavaScript'); ?>
+</body>
+</html>
