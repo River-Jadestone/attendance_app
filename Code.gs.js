@@ -35,70 +35,73 @@ function searchStudentsByName(name) {
   return results;
 }
 
+/**
+ * [구조 변경] 신규 학생을 추가하고, 즉시 상세정보까지 모두 반환합니다.
+ */
 function addStudent(studentData) {
   if (!studentData.name || studentData.name.trim() === '') {
     return { success: false, message: '학생 이름은 필수입니다.' };
   }
+  
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const newId = _getNextId();
+
   sheet.appendRow([ newId, studentData.name, '', '', '', '' ]);
-  SpreadsheetApp.flush();
-  return { 
-    success: true, 
-    message: `'${studentData.name}' 학생을 추가했습니다.`,
-    newStudent: { id: newId, name: studentData.name, teacher: '' }
-  };
+  SpreadsheetApp.flush(); // 변경사항 즉시 저장
+
+  // 서버 내부에서 직접 getStudentDetails를 호출하여 완전한 데이터를 만듭니다.
+  const newStudentDetails = getStudentDetails(newId);
+
+  if (newStudentDetails) {
+    return {
+      success: true,
+      message: `'${studentData.name}' 학생을 추가했습니다.`,
+      details: newStudentDetails // 상세 정보를 함께 반환
+    };
+  } else {
+    // 이 경우는 서버 내부의 심각한 오류입니다.
+    return {
+      success: false,
+      message: '학생을 추가했지만 정보를 다시 불러오는 데 실패했습니다. 시트를 확인해주세요.'
+    };
+  }
 }
 
 function getStudentDetails(id) {
-  try {
-    Logger.log(`--- getStudentDetails START ---`);
-    Logger.log(`Received ID: ${id}, Type: ${typeof id}`);
+  const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
+  const studentData = studentSheet.getDataRange().getValues();
+  studentData.shift();
+  const studentRow = studentData.find(row => String(row[0]) === String(id));
 
-    const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
-    const studentData = studentSheet.getDataRange().getValues();
-    studentData.shift();
+  if (!studentRow) return null;
 
-    Logger.log(`Searching for ID '${id}' in ${studentData.length} student records.`);
-    const studentRow = studentData.find(row => String(row[0]) === String(id));
+  const studentInfo = { id: studentRow[0], name: studentRow[1], teacher: studentRow[2], materials: studentRow[3], progress: studentRow[4], notes: studentRow[5] };
 
-    if (!studentRow) {
-      Logger.log(`!!! FAILED to find student with ID: ${id}`);
-      Logger.log(`--- getStudentDetails END (returning null) ---`);
-      return null;
+  const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
+  const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
+
+  const attendanceData = attendanceSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
+  const paymentData = paymentSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
+
+  const summary = {};
+  attendanceData.forEach(row => {
+    const status = row[3];
+    if (status === '출석' || status === '보강') {
+      try {
+        const month = new Date(row[2]).toISOString().slice(0, 7);
+        summary[month] = (summary[month] || 0) + 1;
+      } catch(e) {}
     }
+  });
 
-    Logger.log(`SUCCESS: Found student row: ${studentRow}`);
-    const studentInfo = { id: studentRow[0], name: studentRow[1], teacher: studentRow[2], materials: studentRow[3], progress: studentRow[4], notes: studentRow[5] };
-    const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
-    const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
-    const attendanceData = attendanceSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
-    const paymentData = paymentSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
-    const summary = {};
-    attendanceData.forEach(row => {
-      const status = row[3];
-      if (status === '출석' || status === '보강') {
-        try {
-          const month = new Date(row[2]).toISOString().slice(0, 7);
-          summary[month] = (summary[month] || 0) + 1;
-        } catch(e) {}
-      }
-    });
-    const attendanceSummary = Object.keys(summary).map(month => ({ month: month, count: summary[month] })).sort((a, b) => b.month.localeCompare(a.month));
-    
-    Logger.log(`--- getStudentDetails END (returning details) ---`);
-    return {
-      info: studentInfo,
-      attendance: attendanceData.map(row => ({ date: row[2], status: row[3] })),
-      payment: paymentData.map(row => ({ month: row[2], status: row[3] })),
-      attendanceSummary: attendanceSummary
-    };
+  const attendanceSummary = Object.keys(summary).map(month => ({ month: month, count: summary[month] })).sort((a, b) => b.month.localeCompare(a.month));
 
-  } catch (e) {
-    Logger.log(`!!! CRITICAL ERROR in getStudentDetails: ${e.toString()}`);
-    Logger.log(e.stack);
-    return null;
-  }
+  return {
+    info: studentInfo,
+    attendance: attendanceData.map(row => ({ date: row[2], status: row[3] })),
+    payment: paymentData.map(row => ({ month: row[2], status: row[3] })),
+    attendanceSummary: attendanceSummary
+  };
 }
 
 function updateStudentDetails(details) {

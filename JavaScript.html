@@ -45,6 +45,9 @@
         }
     }
 
+    /**
+     * [구조 변경] addStudent는 이제 성공 시 상세 정보(details)를 직접 반환합니다.
+     */
     function addStudent() {
         showLoading();
         google.script.run
@@ -52,9 +55,8 @@
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    setTimeout(() => {
-                        getStudentDetails(response.newStudent.id);
-                    }, 1000);
+                    // 더 이상 getStudentDetails를 호출하지 않고, 반환된 details를 바로 사용합니다.
+                    displayStudentDetails(response.details);
                 }
             })
             .withFailureHandler(handleError)
@@ -62,7 +64,6 @@
     }
 
     function getStudentDetails(id) {
-        console.log(`[CLIENT] Calling getStudentDetails with ID: ${id}, Type: ${typeof id}`);
         showLoading();
         google.script.run
             .withSuccessHandler(displayStudentDetails)
@@ -71,11 +72,9 @@
     }
 
     function displayStudentDetails(details) {
-        console.log('[CLIENT] Received response for getStudentDetails:', details);
         hideLoading();
         if (!details) {
-            console.error('[CLIENT] Details object is null. Showing failure alert.');
-            alert('학생 정보를 불러오는 데 실패했습니다.');
+            alert('학생 정보를 표시하는 데 실패했습니다. (details is null)');
             goBackToSearch();
             return;
         }
@@ -164,11 +163,7 @@
         newRow.innerHTML = `<td><input type="text" placeholder="예: 2025-07" value="${month}"></td><td><select><option value="완납" ${status === '완납' ? 'selected' : ''}>완납</option><option value="미납" ${status === '미납' ? 'selected' : ''}>미납</option><option value="상담" ${status === '상담' ? 'selected' : ''}>상담</option></select></td><td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>`;
     }
     function deleteRow(btn) { btn.closest('tr').remove(); }
-    function handleError(error) {
-        console.error('[CLIENT] google.script.run failed:', error);
-        hideLoading();
-        alert('오류가 발생했습니다: ' + error.message);
-    }
+    function handleError(error) { hideLoading(); alert('오류가 발생했습니다: ' + error.message); }
     function formatDate(dateString) {
         if (!dateString) return new Date().toISOString().slice(0, 10);
         try { return new Date(dateString).toISOString().slice(0, 10); } catch (e) { return ''; }
