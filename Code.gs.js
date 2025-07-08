@@ -3,21 +3,16 @@ const SHEET_STUDENTS = '학생명단';
 const SHEET_ATTENDANCE = '출석기록';
 const SHEET_PAYMENT = '교육비납부';
 
-// 웹앱 실행 시 첫 화면 로드
 function doGet() {
   return HtmlService.createTemplateFromFile('index').evaluate()
       .setTitle('출석 관리 시스템')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-// HTML 파일 include 헬퍼 함수
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-/**
- * 다음 학생 ID를 생성합니다.
- */
 function _getNextId() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const lastRow = sheet.getLastRow();
@@ -27,14 +22,10 @@ function _getNextId() {
   return maxId + 1;
 }
 
-/**
- * 이름으로 학생을 검색하여 동명이인을 포함한 목록을 반환합니다.
- */
 function searchStudentsByName(name) {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const data = sheet.getDataRange().getValues();
   data.shift();
-
   const results = [];
   data.forEach(row => {
     if (row[1] === name) {
@@ -44,20 +35,14 @@ function searchStudentsByName(name) {
   return results;
 }
 
-/**
- * 신규 학생을 추가합니다.
- */
 function addStudent(studentData) {
   if (!studentData.name || studentData.name.trim() === '') {
     return { success: false, message: '학생 이름은 필수입니다.' };
   }
-  
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const newId = _getNextId();
-
   sheet.appendRow([ newId, studentData.name, '', '', '', '' ]);
   SpreadsheetApp.flush();
-  
   return { 
     success: true, 
     message: `'${studentData.name}' 학생을 추가했습니다.`,
@@ -65,61 +50,66 @@ function addStudent(studentData) {
   };
 }
 
-/**
- * 학생 ID로 특정 학생의 모든 정보를 가져옵니다.
- */
 function getStudentDetails(id) {
-  const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
-  const studentData = studentSheet.getDataRange().getValues();
-  studentData.shift();
-  const studentRow = studentData.find(row => String(row[0]) === String(id));
+  try {
+    Logger.log(`--- getStudentDetails START ---`);
+    Logger.log(`Received ID: ${id}, Type: ${typeof id}`);
 
-  if (!studentRow) return null;
+    const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
+    const studentData = studentSheet.getDataRange().getValues();
+    studentData.shift();
 
-  const studentInfo = { id: studentRow[0], name: studentRow[1], teacher: studentRow[2], materials: studentRow[3], progress: studentRow[4], notes: studentRow[5] };
+    Logger.log(`Searching for ID '${id}' in ${studentData.length} student records.`);
+    const studentRow = studentData.find(row => String(row[0]) === String(id));
 
-  const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
-  const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
-
-  const attendanceData = attendanceSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
-  const paymentData = paymentSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
-
-  const summary = {};
-  attendanceData.forEach(row => {
-    const status = row[3];
-    if (status === '출석' || status === '보강') {
-      try {
-        const month = new Date(row[2]).toISOString().slice(0, 7);
-        summary[month] = (summary[month] || 0) + 1;
-      } catch(e) {}
+    if (!studentRow) {
+      Logger.log(`!!! FAILED to find student with ID: ${id}`);
+      Logger.log(`--- getStudentDetails END (returning null) ---`);
+      return null;
     }
-  });
 
-  const attendanceSummary = Object.keys(summary).map(month => ({ month: month, count: summary[month] })).sort((a, b) => b.month.localeCompare(a.month));
+    Logger.log(`SUCCESS: Found student row: ${studentRow}`);
+    const studentInfo = { id: studentRow[0], name: studentRow[1], teacher: studentRow[2], materials: studentRow[3], progress: studentRow[4], notes: studentRow[5] };
+    const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
+    const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
+    const attendanceData = attendanceSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
+    const paymentData = paymentSheet.getDataRange().getValues().filter(row => String(row[0]) === String(id));
+    const summary = {};
+    attendanceData.forEach(row => {
+      const status = row[3];
+      if (status === '출석' || status === '보강') {
+        try {
+          const month = new Date(row[2]).toISOString().slice(0, 7);
+          summary[month] = (summary[month] || 0) + 1;
+        } catch(e) {}
+      }
+    });
+    const attendanceSummary = Object.keys(summary).map(month => ({ month: month, count: summary[month] })).sort((a, b) => b.month.localeCompare(a.month));
+    
+    Logger.log(`--- getStudentDetails END (returning details) ---`);
+    return {
+      info: studentInfo,
+      attendance: attendanceData.map(row => ({ date: row[2], status: row[3] })),
+      payment: paymentData.map(row => ({ month: row[2], status: row[3] })),
+      attendanceSummary: attendanceSummary
+    };
 
-  return {
-    info: studentInfo,
-    attendance: attendanceData.map(row => ({ date: row[2], status: row[3] })),
-    payment: paymentData.map(row => ({ month: row[2], status: row[3] })),
-    attendanceSummary: attendanceSummary
-  };
+  } catch (e) {
+    Logger.log(`!!! CRITICAL ERROR in getStudentDetails: ${e.toString()}`);
+    Logger.log(e.stack);
+    return null;
+  }
 }
 
-/**
- * 학생 정보를 업데이트합니다.
- */
 function updateStudentDetails(details) {
   const { id, name, teacher, materials, notes, attendance, payment, newProgress } = details;
-
   try {
     const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
     const studentData = studentSheet.getDataRange().getValues();
     const studentRowIndex = studentData.findIndex(row => String(row[0]) === String(id));
-
     if (studentRowIndex > -1) {
       const range = studentSheet.getRange(studentRowIndex + 1, 2, 1, 5);
       const currentValues = range.getValues()[0];
-      
       let updatedProgress = currentValues[3];
       if (newProgress && newProgress.trim() !== '') {
         const today = new Date().toLocaleDateString('ko-KR');
@@ -129,7 +119,6 @@ function updateStudentDetails(details) {
     } else {
       return { success: false, message: '학생을 찾을 수 없습니다.' };
     }
-
     const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
     const attendanceData = attendanceSheet.getDataRange().getValues();
     for (let i = attendanceData.length - 1; i > 0; i--) {
@@ -141,7 +130,6 @@ function updateStudentDetails(details) {
       const newAttendanceRows = attendance.map(att => [id, name, att.date, att.status]);
       attendanceSheet.getRange(attendanceSheet.getLastRow() + 1, 1, newAttendanceRows.length, 4).setValues(newAttendanceRows);
     }
-
     const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
     const paymentData = paymentSheet.getDataRange().getValues();
     for (let i = paymentData.length - 1; i > 0; i--) {
@@ -153,7 +141,6 @@ function updateStudentDetails(details) {
       const newPaymentRows = payment.map(pay => [id, name, pay.month, pay.status]);
       paymentSheet.getRange(paymentSheet.getLastRow() + 1, 1, newPaymentRows.length, 4).setValues(newPaymentRows);
     }
-
     return { success: true, message: '정보를 성공적으로 업데이트했습니다.' };
   } catch (e) {
     return { success: false, message: '업데이트 중 오류가 발생했습니다: ' + e.toString() };

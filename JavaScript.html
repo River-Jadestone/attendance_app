@@ -52,10 +52,9 @@
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    // [수정] 학생 추가 후, 1초간의 지연을 주어 서버가 데이터를 완전히 처리할 시간을 줍니다.
                     setTimeout(() => {
                         getStudentDetails(response.newStudent.id);
-                    }, 1000); // 1000밀리초 = 1초
+                    }, 1000);
                 }
             })
             .withFailureHandler(handleError)
@@ -63,6 +62,7 @@
     }
 
     function getStudentDetails(id) {
+        console.log(`[CLIENT] Calling getStudentDetails with ID: ${id}, Type: ${typeof id}`);
         showLoading();
         google.script.run
             .withSuccessHandler(displayStudentDetails)
@@ -71,8 +71,10 @@
     }
 
     function displayStudentDetails(details) {
+        console.log('[CLIENT] Received response for getStudentDetails:', details);
         hideLoading();
         if (!details) {
+            console.error('[CLIENT] Details object is null. Showing failure alert.');
             alert('학생 정보를 불러오는 데 실패했습니다.');
             goBackToSearch();
             return;
@@ -162,7 +164,11 @@
         newRow.innerHTML = `<td><input type="text" placeholder="예: 2025-07" value="${month}"></td><td><select><option value="완납" ${status === '완납' ? 'selected' : ''}>완납</option><option value="미납" ${status === '미납' ? 'selected' : ''}>미납</option><option value="상담" ${status === '상담' ? 'selected' : ''}>상담</option></select></td><td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>`;
     }
     function deleteRow(btn) { btn.closest('tr').remove(); }
-    function handleError(error) { hideLoading(); alert('오류가 발생했습니다: ' + error.message); }
+    function handleError(error) {
+        console.error('[CLIENT] google.script.run failed:', error);
+        hideLoading();
+        alert('오류가 발생했습니다: ' + error.message);
+    }
     function formatDate(dateString) {
         if (!dateString) return new Date().toISOString().slice(0, 10);
         try { return new Date(dateString).toISOString().slice(0, 10); } catch (e) { return ''; }
