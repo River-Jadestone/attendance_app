@@ -121,12 +121,12 @@
             payment: []
         };
 
-        Array.from(document.getElementById('attendance-table').rows).slice(1).forEach(row => {
+        Array.from(document.getElementById('attendance-table').getElementsByTagName('tbody')[0].rows).forEach(row => {
             const dateInput = row.cells[0].querySelector('input').value;
             if(dateInput) details.attendance.push({ date: dateInput, status: row.cells[1].querySelector('select').value });
         });
 
-        Array.from(document.getElementById('payment-table').rows).slice(1).forEach(row => {
+        Array.from(document.getElementById('payment-table').getElementsByTagName('tbody')[0].rows).forEach(row => {
             const monthInput = row.cells[0].querySelector('input').value;
             if(monthInput) details.payment.push({ month: monthInput, status: row.cells[1].querySelector('select').value });
         });
@@ -136,7 +136,7 @@
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    getStudentDetails(currentStudentId); // 저장 후 정보 새로고침
+                    getStudentDetails(currentStudentId);
                 }
             })
             .withFailureHandler(handleError)
@@ -150,7 +150,6 @@
         showSection('search-section');
     }
 
-    // --- 행 추가/삭제 및 유틸리티 함수 (이전과 거의 동일) ---
     function addAttendanceRow(date = '', status = '출석') {
         const newRow = document.getElementById('attendance-table').getElementsByTagName('tbody')[0].insertRow(0);
         newRow.innerHTML = `<td><input type="date" value="${formatDate(date)}"></td><td><select><option value="출석" ${status === '출석' ? 'selected' : ''}>출석</option><option value="결석" ${status === '결석' ? 'selected' : ''}>결석</option><option value="보강" ${status === '보강' ? 'selected' : ''}>보강</option></select></td><td><button type="button" class="btn-delete" onclick="deleteRow(this)">삭제</button></td>`;

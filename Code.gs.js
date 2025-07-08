@@ -15,16 +15,13 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// --- 신규 기능 및 수정된 함수 ---
-
 /**
  * 다음 학생 ID를 생성합니다.
- * @returns {number} - 다음 학생 ID
  */
 function _getNextId() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 1; // 헤더만 있으면 1번 시작
+  if (lastRow < 2) return 1;
   const maxId = sheet.getRange(2, 1, lastRow - 1, 1).getValues()
                    .reduce((max, row) => Math.max(max, row[0] || 0), 0);
   return maxId + 1;
@@ -32,31 +29,23 @@ function _getNextId() {
 
 /**
  * 이름으로 학생을 검색하여 동명이인을 포함한 목록을 반환합니다.
- * @param {string} name - 검색할 학생 이름
- * @returns {Array<object>} - 학생 목록 (id, name, teacher)
  */
 function searchStudentsByName(name) {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const data = sheet.getDataRange().getValues();
-  data.shift(); // 헤더 제거
+  data.shift();
 
   const results = [];
   data.forEach(row => {
     if (row[1] === name) {
-      results.push({
-        id: row[0],
-        name: row[1],
-        teacher: row[2]
-      });
+      results.push({ id: row[0], name: row[1], teacher: row[2] });
     }
   });
   return results;
 }
 
 /**
- * 신규 학생을 추가합니다. (ID 자동 생성)
- * @param {object} studentData - 추가할 학생 정보 (name 필수)
- * @returns {object} - 성공 여부 및 추가된 학생 정보
+ * 신규 학생을 추가합니다.
  */
 function addStudent(studentData) {
   if (!studentData.name || studentData.name.trim() === '') {
@@ -66,15 +55,7 @@ function addStudent(studentData) {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
   const newId = _getNextId();
 
-  sheet.appendRow([
-    newId,
-    studentData.name,
-    '', // 담당교사
-    '', // 사용교구
-    '', // 진도
-    ''  // 특이사항
-  ]);
-  
+  sheet.appendRow([ newId, studentData.name, '', '', '', '' ]);
   SpreadsheetApp.flush();
   
   return { 
@@ -86,8 +67,6 @@ function addStudent(studentData) {
 
 /**
  * 학생 ID로 특정 학생의 모든 정보를 가져옵니다.
- * @param {number|string} id - 학생 ID
- * @returns {object|null} - 학생의 모든 정보 또는 null
  */
 function getStudentDetails(id) {
   const studentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_STUDENTS);
@@ -97,14 +76,7 @@ function getStudentDetails(id) {
 
   if (!studentRow) return null;
 
-  const studentInfo = {
-    id: studentRow[0],
-    name: studentRow[1],
-    teacher: studentRow[2],
-    materials: studentRow[3],
-    progress: studentRow[4],
-    notes: studentRow[5]
-  };
+  const studentInfo = { id: studentRow[0], name: studentRow[1], teacher: studentRow[2], materials: studentRow[3], progress: studentRow[4], notes: studentRow[5] };
 
   const attendanceSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_ATTENDANCE);
   const paymentSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_PAYMENT);
@@ -123,10 +95,7 @@ function getStudentDetails(id) {
     }
   });
 
-  const attendanceSummary = Object.keys(summary).map(month => ({
-    month: month,
-    count: summary[month]
-  })).sort((a, b) => b.month.localeCompare(a.month));
+  const attendanceSummary = Object.keys(summary).map(month => ({ month: month, count: summary[month] })).sort((a, b) => b.month.localeCompare(a.month));
 
   return {
     info: studentInfo,
@@ -137,9 +106,7 @@ function getStudentDetails(id) {
 }
 
 /**
- * 학생 정보를 업데이트합니다. (ID 기준)
- * @param {object} details - 업데이트할 학생 정보 (id 포함)
- * @returns {object} - 성공 여부 메시지
+ * 학생 정보를 업데이트합니다.
  */
 function updateStudentDetails(details) {
   const { id, name, teacher, materials, notes, attendance, payment, newProgress } = details;
@@ -158,7 +125,6 @@ function updateStudentDetails(details) {
         const today = new Date().toLocaleDateString('ko-KR');
         updatedProgress = updatedProgress ? `${updatedProgress}\n${today}: ${newProgress}` : `${today}: ${newProgress}`;
       }
-
       range.setValues([[name, teacher, materials, updatedProgress, notes]]);
     } else {
       return { success: false, message: '학생을 찾을 수 없습니다.' };
