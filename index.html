@@ -48,16 +48,34 @@
                     <label for="materials">사용교구</label>
                     <input type="text" id="materials">
                 </div>
+
                 <div class="form-group">
-                    <label for="progress">진도</label>
-                    <input type="text" id="progress">
+                    <label>진도 내역</label>
+                    <div id="progress-history" style="white-space: pre-wrap; background-color: #e9ecef; padding: 10px; border-radius: 4px; min-height: 50px;"></div>
                 </div>
+                <div class="form-group">
+                    <label for="new-progress">새로운 진도 추가</label>
+                    <input type="text" id="new-progress" placeholder="오늘의 진도 내용을 입력하세요">
+                </div>
+
                 <div class="form-group">
                     <label for="notes">특이사항</label>
                     <textarea id="notes" rows="3"></textarea>
                 </div>
 
-                <h3>출석 정보 <button type="button" class="btn-add" onclick="addAttendanceRow()">+</button></h3>
+                <h3>월별 출석 현황 (4회 기준)</h3>
+                <table id="attendance-summary-table">
+                    <thead>
+                        <tr>
+                            <th>해당 월</th>
+                            <th>출석 횟수</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+
+                <h3>전체 출석 기록 <button type="button" class="btn-add" onclick="addAttendanceRow()">+</button></h3>
                 <table id="attendance-table">
                     <thead>
                         <tr>

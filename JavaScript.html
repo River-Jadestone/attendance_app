@@ -1,11 +1,9 @@
 <script>
     let currentStudentName = '';
 
-    // 로딩 화면 표시/숨김
     function showLoading() { document.getElementById('loading').style.display = 'block'; }
     function hideLoading() { document.getElementById('loading').style.display = 'none'; }
 
-    // 학생 검색
     function searchStudent() {
         const name = document.getElementById('search-name').value.trim();
         if (!name) {
@@ -19,21 +17,18 @@
             .getStudentDetails(name);
     }
 
-    // 신규 학생 추가 폼 표시
     function showAddStudentForm() {
         document.getElementById('search-section').style.display = 'none';
         document.getElementById('add-student-form').style.display = 'block';
         document.getElementById('new-student-name').value = document.getElementById('search-name').value;
     }
 
-    // 신규 학생 추가 폼 숨김
     function hideAddStudentForm() {
         document.getElementById('search-section').style.display = 'block';
         document.getElementById('add-student-form').style.display = 'none';
         document.getElementById('new-student-name').value = '';
     }
 
-    // 신규 학생 추가 실행
     function addStudent() {
         const name = document.getElementById('new-student-name').value.trim();
         if (!name) {
@@ -48,14 +43,13 @@
                 if (response.success) {
                     hideAddStudentForm();
                     document.getElementById('search-name').value = name;
-                    searchStudent(); // 추가 후 바로 검색
+                    searchStudent();
                 }
             })
             .withFailureHandler(handleError)
             .addStudent({ name: name });
     }
 
-    // 학생 상세 정보 표시
     function displayStudentDetails(details) {
         hideLoading();
         if (!details) {
@@ -73,8 +67,33 @@
         document.getElementById('student-name-header').innerText = `${details.info.name} 학생 정보`;
         document.getElementById('teacher').value = details.info.teacher;
         document.getElementById('materials').value = details.info.materials;
-        document.getElementById('progress').value = details.info.progress;
+        document.getElementById('progress-history').innerText = details.info.progress;
+        document.getElementById('new-progress').value = '';
         document.getElementById('notes').value = details.info.notes;
+
+        const summaryTbody = document.getElementById('attendance-summary-table').getElementsByTagName('tbody')[0];
+        summaryTbody.innerHTML = '';
+        if (details.attendanceSummary && details.attendanceSummary.length > 0) {
+            details.attendanceSummary.forEach(summary => {
+                const row = summaryTbody.insertRow();
+                const cellMonth = row.insertCell();
+                const cellCount = row.insertCell();
+                
+                cellMonth.innerText = summary.month;
+                cellCount.innerText = `${summary.count}회 / 4회`;
+                
+                if (summary.count >= 4) {
+                    cellCount.style.color = 'green';
+                    cellCount.style.fontWeight = 'bold';
+                }
+            });
+        } else {
+            const row = summaryTbody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = 2;
+            cell.innerText = '출석 기록이 없습니다.';
+            cell.style.textAlign = 'center';
+        }
 
         const attendanceTbody = document.getElementById('attendance-table').getElementsByTagName('tbody')[0];
         attendanceTbody.innerHTML = '';
@@ -85,10 +104,9 @@
         if(details.payment) details.payment.forEach(pay => addPaymentRow(pay.month, pay.status));
     }
 
-    // 출석 기록 행 추가
     function addAttendanceRow(date = '', status = '출석') {
         const table = document.getElementById('attendance-table').getElementsByTagName('tbody')[0];
-        const newRow = table.insertRow(0); // 항상 맨 위에 추가
+        const newRow = table.insertRow(0);
         newRow.innerHTML = `
             <td><input type="date" value="${formatDate(date)}"></td>
             <td>
@@ -102,10 +120,9 @@
         `;
     }
 
-    // 교육비 납부 행 추가
     function addPaymentRow(month = '', status = '미납') {
         const table = document.getElementById('payment-table').getElementsByTagName('tbody')[0];
-        const newRow = table.insertRow(0); // 항상 맨 위에 추가
+        const newRow = table.insertRow(0);
         newRow.innerHTML = `
             <td><input type="text" placeholder="예: 2025-07" value="${month}"></td>
             <td>
@@ -119,13 +136,11 @@
         `;
     }
     
-    // 행 삭제
     function deleteRow(btn) {
         const row = btn.parentNode.parentNode;
         row.parentNode.removeChild(row);
     }
 
-    // 변경 사항 저장
     function saveChanges() {
         if (!confirm('정말로 변경사항을 저장하시겠습니까?')) return;
         
@@ -134,7 +149,7 @@
             name: currentStudentName,
             teacher: document.getElementById('teacher').value,
             materials: document.getElementById('materials').value,
-            progress: document.getElementById('progress').value,
+            newProgress: document.getElementById('new-progress').value,
             notes: document.getElementById('notes').value,
             attendance: [],
             payment: []
@@ -143,7 +158,7 @@
         const attendanceRows = document.getElementById('attendance-table').getElementsByTagName('tbody')[0].rows;
         for (let row of attendanceRows) {
             const dateInput = row.cells[0].getElementsByTagName('input')[0].value;
-            if(dateInput) { // 날짜가 입력된 경우에만 추가
+            if(dateInput) {
                  details.attendance.push({
                     date: dateInput,
                     status: row.cells[1].getElementsByTagName('select')[0].value
@@ -154,7 +169,7 @@
         const paymentRows = document.getElementById('payment-table').getElementsByTagName('tbody')[0].rows;
         for (let row of paymentRows) {
             const monthInput = row.cells[0].getElementsByTagName('input')[0].value;
-            if(monthInput) { // 납부월이 입력된 경우에만 추가
+            if(monthInput) {
                 details.payment.push({
                     month: monthInput,
                     status: row.cells[1].getElementsByTagName('select')[0].value
@@ -167,14 +182,13 @@
                 hideLoading();
                 alert(response.message);
                 if (response.success) {
-                    goBackToSearch();
+                    searchStudent(); 
                 }
             })
             .withFailureHandler(handleError)
             .updateStudentDetails(details);
     }
 
-    // 검색 화면으로 돌아가기
     function goBackToSearch() {
         document.getElementById('student-details').style.display = 'none';
         document.getElementById('search-section').style.display = 'block';
@@ -182,13 +196,11 @@
         currentStudentName = '';
     }
 
-    // 오류 처리
     function handleError(error) {
         hideLoading();
         alert('오류가 발생했습니다: ' + error.message);
     }
 
-    // 날짜 형식을 YYYY-MM-DD로 변환
     function formatDate(dateString) {
         if (!dateString) return new Date().toISOString().slice(0, 10);
         try {
@@ -198,7 +210,6 @@
         }
     }
 
-    // Enter 키로 검색 실행
     document.getElementById('search-name').addEventListener('keyup', function(event) {
         if (event.key === 'Enter') {
             searchStudent();
