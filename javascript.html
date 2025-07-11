@@ -34,7 +34,7 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
 
   // --- 이벤트 리스너 등록 ---
   searchForm.addEventListener('submit', handleSearch);
-  addNewStudentBtn.addEventListener('click', () => $('#add-student-modal').modal('show'));
+  addNewStudentBtn.addEventListener('click', openAddStudentModal);
   saveStudentBtn.addEventListener('click', saveNewStudent);
   openEditModalBtn.addEventListener('click', openEditStudentModal);
   updateStudentBtn.addEventListener('click', updateStudent);
@@ -51,6 +51,14 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     progressDetailsDiv.style.display = (attendanceStatusSelect.value === '출석') ? 'block' : 'none';
   });
 
+  // ★★★★★ 수정된 부분: 이벤트 위임 사용 ★★★★★
+  resultsDiv.addEventListener('click', function(event) {
+    if (event.target && event.target.classList.contains('view-details-btn')) {
+      const studentId = event.target.getAttribute('data-student-id');
+      viewDetails(studentId);
+    }
+  });
+
   // --- 함수 정의 ---
   function handleSearch(e) {
     e.preventDefault();
@@ -64,18 +72,20 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     if (students.length === 0) { resultsDiv.innerHTML = '<p class="text-center">검색 결과가 없습니다.</p>'; return; }
     let table = '<table class="table table-hover"><thead><tr><th>학생ID</th><th>이름</th><th>나이</th><th>학교</th><th>작업</th></tr></thead><tbody>';
     students.forEach(student => {
-      table += `<tr><td>${student.학생ID}</td><td>${student.이름}</td><td>${student.나이}</td><td>${student.학교}</td><td><button class="btn btn-sm btn-info" onclick="viewDetails('${student.학생ID}')">상세보기</button></td></tr>`;
+      // ★★★★★ 수정된 부분: onclick 제거, data-id 추가 ★★★★★
+      table += `<tr><td>${student.학생ID}</td><td>${student.이름}</td><td>${student.나이}</td><td>${student.학교}</td><td><button class="btn btn-sm btn-info view-details-btn" data-student-id="${student.학생ID}">상세보기</button></td></tr>`;
     });
     table += '</tbody></table>';
     resultsDiv.innerHTML = table;
   }
 
-  window.viewDetails = function(studentId) {
+  // ★★★★★ 수정된 부분: window.viewDetails 제거, 일반 함수로 변경 ★★★★★
+  function viewDetails(studentId) {
     $('#student-details-modal').modal('show');
     $('#details-loader').show();
     $('#details-content').hide();
     google.script.run.withSuccessHandler(displayStudentDetails).withFailureHandler(showError).getStudentDetails(studentId);
-  };
+  }
 
   function displayStudentDetails(data) {
     if (data.error) { showError(data); $('#student-details-modal').modal('hide'); return; }
