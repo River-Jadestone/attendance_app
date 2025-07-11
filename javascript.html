@@ -35,7 +35,6 @@ document.addEventListener("DOMContentLoaded", function() {
   recordPaymentBtn.addEventListener('click', recordPayment);
   recordAttendanceBtn.addEventListener('click', recordAttendance);
   
-  // 실시간 금액 계산 이벤트
   subjectSelect.addEventListener('change', updateCalculatedFee);
   monthsSelect.addEventListener('change', updateCalculatedFee);
 
@@ -100,7 +99,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
     $('#info-content').html(`<p><strong>나이:</strong> ${info.나이}</p><p><strong>학교:</strong> ${info.학교}</p><p><strong>가족 그룹 ID:</strong> ${info['가족 그룹 ID']}</p>`);
     $('#payments-content').html(createTable(data.payments, ['납부일', '납부 금액', '결제 수단', '비고']));
-    $('#progress-content').html(createTable(data.progress, ['수업 날짜', '과목ID', '수업 내용', '수업 선생님']));
+    
+    // ★★★★★ 수정: 진도 테이블 헤더 변경 ★★★★★
+    $('#progress-content').html(createTable(data.progress, ['수업 날짜', '과목명', '수업 내용', '수업 선생님']));
     
     if (calendar) calendar.destroy();
     calendar = new FullCalendar.Calendar(calendarEl, {
@@ -110,12 +111,15 @@ document.addEventListener("DOMContentLoaded", function() {
       dateClick: (info) => openAttendanceModal(info.dateStr)
     });
     calendar.render();
+
+    // ★★★★★ 수정: 달력 렌더링 후 스크롤 버그 수정 ★★★★★
+    $('#student-details-modal').css('overflow-y', 'auto');
   }
 
   function openPaymentModal() {
     const studentId = this.getAttribute('data-student-id');
     $('#payment-student-id').val(studentId);
-    updateCalculatedFee(); // 예상 금액 초기화
+    updateCalculatedFee();
     google.script.run.withSuccessHandler(subjects => {
       subjectSelect.innerHTML = '<option value="">과목을 선택하세요</option>';
       subjects.forEach(s => subjectSelect.innerHTML += `<option value="${s.과목ID}">${s.과목명} (월 ${s.월수강료}원)</option>`);
@@ -124,18 +128,12 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function updateCalculatedFee() {
-    const data = {
-      studentId: $('#payment-student-id').val(),
-      subjectId: subjectSelect.value,
-      months: monthsSelect.value
-    };
-
+    const data = { studentId: $('#payment-student-id').val(), subjectId: subjectSelect.value, months: monthsSelect.value };
     if (!data.subjectId) {
       calculatedFeeSpan.textContent = '0원';
       discountDetailsSpan.textContent = '';
       return;
     }
-
     calculatedFeeSpan.textContent = '계산 중...';
     google.script.run.withSuccessHandler(result => {
       if (result.success) {
@@ -167,7 +165,6 @@ document.addEventListener("DOMContentLoaded", function() {
     $('#attendance-student-id').val(currentStudentForCalendar.id);
     $('#attendance-student-name').val(currentStudentForCalendar.name);
     $('#class-date').val(clickedDate);
-
     google.script.run.withSuccessHandler(subjects => {
       const subjectSelect = $('#progress-subject');
       subjectSelect.html('<option value="">과목을 선택하세요</option>');
@@ -187,8 +184,6 @@ document.addEventListener("DOMContentLoaded", function() {
       if (response.success) {
         $('#attendance-modal').modal('hide');
         $('#student-details-modal').modal('hide');
-        // 상세창을 닫았으므로, 다시 열었을 때 최신 정보를 보려면 검색을 다시 해야 함
-        // viewDetails(recordData.studentId); // 이 방법도 가능
       }
       recordAttendanceBtn.disabled = false;
     }).withFailureHandler(showError).recordAttendanceAndProgress(recordData);
@@ -207,7 +202,11 @@ document.addEventListener("DOMContentLoaded", function() {
     table += '</tr></thead><tbody>';
     data.forEach(row => {
       table += '<tr>';
-      headers.forEach(h => table += `<td>${row[h] || ''}</td>`);
+      headers.forEach(h => {
+        // ★★★★★ 수정: 과목명 컬럼을 찾아서 표시 ★★★★★
+        const key = (h === '과목명' && row.hasOwnProperty('과목명')) ? '과목명' : h;
+        table += `<td>${row[key] || ''}</td>`;
+      });
       table += '</tr>';
     });
     table += '</tbody></table>';

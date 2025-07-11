@@ -1,4 +1,4 @@
-// Code.gs (계산 로직 강화 및 분리)
+// Code.gs (계산 로직 강화, 과목명 표시, 디버깅 로그 추가)
 
 // ----------------- 설정 -----------------
 const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
@@ -70,7 +70,7 @@ function getStudentDetails(studentId) {
       registrations: getDataByStudentId_(ss, SHEETS.REGISTRATION, studentId),
       payments: getDataByStudentId_(ss, SHEETS.PAYMENT, studentId),
       attendance: getAttendanceEvents_(ss, studentId),
-      progress: getDataByStudentId_(ss, SHEETS.PROGRESS, studentId)
+      progress: getProgressDataWithSubjectName_(ss, studentId) // 수정된 함수 호출
     };
   } catch (e) {
     return { error: true, message: e.message };
@@ -91,10 +91,6 @@ function getSubjects() {
   });
 }
 
-/**
- * ★★★★★ 새로 추가된 함수 ★★★★★
- * 교육비를 계산만 하고 결과를 반환합니다. (프론트엔드 미리보기용)
- */
 function calculateTuitionFee(data) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -107,15 +103,19 @@ function calculateTuitionFee(data) {
     const studentInfo = getStudentInfo_(ss, studentId);
     if (!studentInfo) return { success: false, message: "학생 정보 없음" };
 
-    // 월수강료에서 숫자만 추출하여 계산
+    // ★★★★★ 월수강료 처리 및 디버깅 로그 추가 ★★★★★
+    Logger.log("Raw 월수강료 from sheet for 과목ID " + subjectInfo.과목ID + ": " + subjectInfo.월수강료);
     const monthlyFee = parseFloat(String(subjectInfo.월수강료).replace(/[^\d.-]/g, ''));
-    if (isNaN(monthlyFee)) throw new Error("월수강료가 숫자가 아닙니다.");
+    Logger.log("Parsed 월수강료: " + monthlyFee);
+
+    if (isNaN(monthlyFee)) {
+      throw new Error("월수강료가 숫자가 아닙니다. 시트 값을 확인해주세요: " + subjectInfo.월수강료);
+    }
 
     let baseFee = monthlyFee * parseInt(months, 10);
     let discountAmount = 0;
     let discountReason = [];
 
-    // 할인율 적용
     const discountRate3 = parseFloat(subjectInfo['3개월 할인율']);
     const discountRate12 = parseFloat(subjectInfo['12개월 할인율']);
     if (months == 3 && discountRate3 > 0) {
@@ -127,7 +127,6 @@ function calculateTuitionFee(data) {
       discountReason.push(`12개월 할인 (${discountRate12 * 100}%)`);
     }
 
-    // 형제 할인 적용
     const familyGroupId = studentInfo['가족 그룹 ID'];
     if (familyGroupId) {
       const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
@@ -147,6 +146,7 @@ function calculateTuitionFee(data) {
     return { success: true, finalAmount: finalAmount, details: discountReason.join(', ') };
 
   } catch (e) {
+    Logger.log("calculateTuitionFee Error: " + e.message);
     return { success: false, message: e.message };
   }
 }
@@ -229,6 +229,38 @@ function getAttendanceEvents_(ss, studentId) {
       results.push({ title: status, date: Utilities.formatDate(new Date(row[dateIndex]), "UTC", "yyyy-MM-dd"), color: color });
     }
   });
+  return results;
+}
+
+function getProgressDataWithSubjectName_(ss, studentId) {
+  const progressSheet = ss.getSheetByName(SHEETS.PROGRESS);
+  if (!progressSheet) return [];
+  
+  const allSubjects = getSubjects();
+  
+  const data = progressSheet.getDataRange().getValues();
+  const headers = data.shift();
+  const studentIdIndex = headers.indexOf("학생ID");
+  if (studentIdIndex === -1) return [];
+
+  const results = [];
+  data.forEach(row => {
+    if (row[studentIdIndex] === studentId) {
+      const record = {};
+      headers.forEach((header, i) => {
+        if (header === "과목ID") {
+          const subjectId = row[i];
+          const subject = allSubjects.find(s => s.과목ID == subjectId);
+          record["과목명"] = subject ? subject.과목명 : "알 수 없는 과목";
+        } else {
+           record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
+        }
+      });
+      results.push(record);
+    }
+  });
+
+  results.sort((a, b) => new Date(b["수업 날짜"]) - new Date(a["수업 날짜"]));
   return results;
 }
 
