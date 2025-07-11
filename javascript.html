@@ -1,23 +1,39 @@
 <!-- javascript.html -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+  // --- UI 요소 변수 선언 ---
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-name');
   const resultsDiv = document.getElementById('search-results');
   const loader = document.getElementById('loader');
   const addNewStudentBtn = document.getElementById('add-new-student-btn');
   const saveStudentBtn = document.getElementById('save-student-btn');
-  const addStudentForm = document.getElementById('add-student-form');
+  const openPaymentModalBtn = document.getElementById('open-payment-modal-btn');
+  const recordPaymentBtn = document.getElementById('record-payment-btn');
+  const openAttendanceModalBtn = document.getElementById('open-attendance-modal-btn');
+  const recordAttendanceBtn = document.getElementById('record-attendance-btn');
+  const attendanceStatusSelect = document.getElementById('attendance-status');
+  const progressDetailsDiv = document.getElementById('progress-details');
 
-  searchForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const studentName = searchInput.value.trim();
-    if (studentName) {
-      loader.style.display = 'block';
-      resultsDiv.innerHTML = '';
-      google.script.run.withSuccessHandler(displayResults).withFailureHandler(showError).searchStudent(studentName);
-    }
+  // --- 이벤트 리스너 등록 ---
+  searchForm.addEventListener('submit', handleSearch);
+  addNewStudentBtn.addEventListener('click', () => $('#add-student-modal').modal('show'));
+  saveStudentBtn.addEventListener('click', saveNewStudent);
+  openPaymentModalBtn.addEventListener('click', openPaymentModal);
+  recordPaymentBtn.addEventListener('click', recordPayment);
+  openAttendanceModalBtn.addEventListener('click', openAttendanceModal);
+  recordAttendanceBtn.addEventListener('click', recordAttendance);
+  attendanceStatusSelect.addEventListener('change', () => {
+    progressDetailsDiv.style.display = (attendanceStatusSelect.value === '출석') ? 'block' : 'none';
   });
+
+  // --- 함수 정의 ---
+  function handleSearch(e) {
+    e.preventDefault();
+    loader.style.display = 'block';
+    resultsDiv.innerHTML = '';
+    google.script.run.withSuccessHandler(displayResults).withFailureHandler(showError).searchStudent(searchInput.value.trim());
+  }
 
   function displayResults(students) {
     loader.style.display = 'none';
@@ -25,38 +41,19 @@ document.addEventListener("DOMContentLoaded", function() {
       resultsDiv.innerHTML = '<p class="text-center">검색 결과가 없습니다.</p>';
       return;
     }
-    let table = '<table id="results-table" class="table table-hover">';
-    table += '<thead class="thead-light"><tr><th>학생ID</th><th>이름</th><th>나이</th><th>학교</th><th>작업</th></tr></thead><tbody>';
+    let table = '<table id="results-table" class="table table-hover"><thead><tr><th>학생ID</th><th>이름</th><th>나이</th><th>학교</th><th>작업</th></tr></thead><tbody>';
     students.forEach(student => {
-      table += `<tr>
-                  <td>${student.학생ID}</td>
-                  <td>${student.이름}</td>
-                  <td>${student.나이}</td>
-                  <td>${student.학교}</td>
-                  <td><button class="btn btn-sm btn-info" onclick="viewDetails('''${student.학생ID}''')">상세보기</button></td>
-                </tr>`;
+      table += `<tr><td>${student.학생ID}</td><td>${student.이름}</td><td>${student.나이}</td><td>${student.학교}</td><td><button class="btn btn-sm btn-info" onclick="viewDetails('${student.학생ID}')">상세보기</button></td></tr>`;
     });
     table += '</tbody></table>';
     resultsDiv.innerHTML = table;
   }
 
-  addNewStudentBtn.addEventListener('click', function() {
-    addStudentForm.reset();
-    $('#add-student-modal').modal('show');
-  });
-
-  saveStudentBtn.addEventListener('click', function() {
-    const studentInfo = {
-      name: document.getElementById('new-name').value.trim(),
-      age: document.getElementById('new-age').value.trim(),
-      school: document.getElementById('new-school').value.trim()
-    };
-    if (!studentInfo.name || !studentInfo.age || !studentInfo.school) {
-      alert('모든 필드를 입력해주세요.');
-      return;
-    }
+  function saveNewStudent() {
+    const studentInfo = { name: $('#new-name').val().trim(), age: $('#new-age').val().trim(), school: $('#new-school').val().trim() };
+    if (!studentInfo.name || !studentInfo.age || !studentInfo.school) { alert('모든 필드를 입력해주세요.'); return; }
     this.disabled = true;
-    google.script.run.withSuccessHandler(function(response) {
+    google.script.run.withSuccessHandler(response => {
       alert(response.message);
       if (response.success) {
         $('#add-student-modal').modal('hide');
@@ -65,61 +62,114 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       saveStudentBtn.disabled = false;
     }).withFailureHandler(showError).addStudent(studentInfo);
-  });
-
-  function showError(error) {
-    loader.style.display = 'none';
-    document.getElementById('details-loader').style.display = 'none';
-    alert("오류가 발생했습니다: " + error.message);
-    if (saveStudentBtn.disabled) saveStudentBtn.disabled = false;
   }
-  
+
   window.viewDetails = function(studentId) {
     $('#student-details-modal').modal('show');
-    document.getElementById('details-loader').style.display = 'block';
-    document.getElementById('details-content').style.display = 'none';
-    
-    google.script.run
-      .withSuccessHandler(displayStudentDetails)
-      .withFailureHandler(showError)
-      .getStudentDetails(studentId);
+    $('#details-loader').show();
+    $('#details-content').hide();
+    google.script.run.withSuccessHandler(displayStudentDetails).withFailureHandler(showError).getStudentDetails(studentId);
   };
 
   function displayStudentDetails(data) {
-    if (data.error) {
-      showError(data);
-      $('#student-details-modal').modal('hide');
-      return;
-    }
-
-    document.getElementById('details-loader').style.display = 'none';
-    document.getElementById('details-content').style.display = 'block';
+    if (data.error) { showError(data); $('#student-details-modal').modal('hide'); return; }
+    $('#details-loader').hide();
+    $('#details-content').show();
     
-    // 1. 기본 정보 채우기
     const info = data.info;
-    document.getElementById('details-modal-title').innerText = `${info.이름} (${info.학생ID}) 학생 상세 정보`;
-    let infoHtml = `<p><strong>나이:</strong> ${info.나이}</p>
-                    <p><strong>학교:</strong> ${info.학교}</p>
-                    <p><strong>가족 그룹 ID:</strong> ${info['가족 그룹 ID']}</p>`;
-    document.getElementById('info-content').innerHTML = infoHtml;
-
-    // 2. 납부 내역 테이블 생성
-    document.getElementById('payments-content').innerHTML = createTable(data.payments, ['납부일', '납부 금액', '결제 수단', '비고']);
+    $('#details-modal-title').text(`${info.이름} (${info.학생ID}) 학생 상세 정보`);
     
-    // 3. 출결 현황 테이블 생성
-    document.getElementById('attendance-content').innerHTML = createTable(data.attendance, ['출석 날짜', '출결 상태']);
-    
-    // 4. 수업 진도 테이블 생성
-    document.getElementById('progress-content').innerHTML = createTable(data.progress, ['수업 날짜', '과목', '수업 내용', '수업 선생님']);
+    openPaymentModalBtn.setAttribute('data-student-id', info.학생ID);
+    openPaymentModalBtn.setAttribute('data-student-name', info.이름);
+    openAttendanceModalBtn.setAttribute('data-student-id', info.학생ID);
+    openAttendanceModalBtn.setAttribute('data-student-name', info.이름);
 
-    // 첫 번째 탭을 활성화 상태로 리셋
+    $('#info-content').html(`<p><strong>나이:</strong> ${info.나이}</p><p><strong>학교:</strong> ${info.학교}</p><p><strong>가족 그룹 ID:</strong> ${info['가족 그룹 ID']}</p>`);
+    $('#payments-content').html(createTable(data.payments, ['납부일', '납부 금액', '결제 수단', '비고']));
+    $('#attendance-content').html(createTable(data.attendance, ['출석 날짜', '출결 상태']));
+    $('#progress-content').html(createTable(data.progress, ['수업 날짜', '과목ID', '수업 내용', '수업 선생님']));
     $('#details-content .nav-tabs a:first').tab('show');
   }
 
+  function openPaymentModal() {
+    $('#payment-student-id').val(this.getAttribute('data-student-id'));
+    $('#payment-student-name').val(this.getAttribute('data-student-name'));
+    google.script.run.withSuccessHandler(subjects => {
+      const subjectSelect = $('#subject-select');
+      subjectSelect.html('<option value="">과목을 선택하세요</option>');
+      subjects.forEach(s => subjectSelect.append(`<option value="${s.과목ID}">${s.과목명} (월 ${s.월수강료}원)</option>`));
+      $('#payment-modal').modal('show');
+    }).withFailureHandler(showError).getSubjects();
+  }
+
+  function recordPayment() {
+    const paymentData = {
+      studentId: $('#payment-student-id').val(), studentName: $('#payment-student-name').val(),
+      subjectId: $('#subject-select').val(), months: $('#months-select').val(),
+      paymentMethod: $('#payment-method').val(), cardCompany: $('#card-company').val()
+    };
+    if (!paymentData.subjectId) { alert('과목을 선택해주세요.'); return; }
+    this.disabled = true;
+    google.script.run.withSuccessHandler(response => {
+      alert(response.message);
+      if (response.success) {
+        $('#payment-modal').modal('hide');
+        $('#student-details-modal').modal('hide');
+        searchForm.dispatchEvent(new Event('submit'));
+      }
+      recordPaymentBtn.disabled = false;
+    }).withFailureHandler(showError).calculateAndRecordPayment(paymentData);
+  }
+
+  function openAttendanceModal() {
+    $('#attendance-student-id').val(this.getAttribute('data-student-id'));
+    $('#attendance-student-name').val(this.getAttribute('data-student-name'));
+    
+    // 오늘 날짜를 yyyy-mm-dd 형식으로 설정
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    $('#class-date').val(`${yyyy}-${mm}-${dd}`);
+
+    google.script.run.withSuccessHandler(subjects => {
+      const subjectSelect = $('#progress-subject');
+      subjectSelect.html('<option value="">과목을 선택하세요</option>');
+      subjects.forEach(s => subjectSelect.append(`<option value="${s.과목ID}">${s.과목명}</option>`));
+      $('#attendance-modal').modal('show');
+    }).withFailureHandler(showError).getSubjects();
+  }
+
+  function recordAttendance() {
+    const recordData = {
+      studentId: $('#attendance-student-id').val(), studentName: $('#attendance-student-name').val(),
+      classDate: $('#class-date').val(), attendanceStatus: $('#attendance-status').val(),
+      subjectId: $('#progress-subject').val(), classContent: $('#class-content').val(),
+      teacherName: $('#teacher-name').val()
+    };
+    if (!recordData.classDate) { alert('수업 날짜를 선택해주세요.'); return; }
+    if (recordData.attendanceStatus === '출석' && !recordData.subjectId) { alert('과목을 선택해주세요.'); return; }
+    
+    this.disabled = true;
+    google.script.run.withSuccessHandler(response => {
+      alert(response.message);
+      if (response.success) {
+        $('#attendance-modal').modal('hide');
+        $('#student-details-modal').modal('hide');
+        searchForm.dispatchEvent(new Event('submit'));
+      }
+      recordAttendanceBtn.disabled = false;
+    }).withFailureHandler(showError).recordAttendanceAndProgress(recordData);
+  }
+
+  function showError(error) {
+    $('.spinner-border').parent().hide();
+    alert("오류가 발생했습니다: " + error.message);
+    $('button').prop('disabled', false);
+  }
+
   function createTable(data, headers) {
-    if (!data || data.length === 0) {
-      return '<p>데이터가 없습니다.</p>';
-    }
+    if (!data || data.length === 0) return '<p>데이터가 없습니다.</p>';
     let table = '<table class="table table-striped table-bordered table-sm"><thead><tr>';
     headers.forEach(h => table += `<th>${h}</th>`);
     table += '</tr></thead><tbody>';

@@ -50,39 +50,23 @@ function addStudent(studentInfo) {
   try {
     const newId = "S" + new Date().getTime();
     const familyGroupId = studentInfo.familyGroupId || "F" + new Date().getTime();
-    studentSheet.appendRow([
-      newId,
-      studentInfo.name,
-      studentInfo.age,
-      studentInfo.school,
-      familyGroupId
-    ]);
+    studentSheet.appendRow([ newId, studentInfo.name, studentInfo.age, studentInfo.school, familyGroupId ]);
     return { success: true, message: "학생이 성공적으로 추가되었습니다." };
   } catch (e) {
     return { success: false, message: "오류 발생: " + e.message };
   }
 }
 
-/**
- * 학생 ID를 기반으로 모든 관련 정보를 가져옵니다.
- * @param {string} studentId - 조회할 학생의 ID
- * @returns {Object} - 학생의 모든 상세 정보
- */
 function getStudentDetails(studentId) {
   try {
-    // 1. 기본 학생 정보 가져오기
     const studentData = studentSheet.getDataRange().getValues();
     const studentHeaders = studentData.shift();
     const studentInfoRow = studentData.find(row => row[0] === studentId);
-    if (!studentInfoRow) {
-      throw new Error("해당 ID의 학생을 찾을 수 없습니다.");
-    }
+    if (!studentInfoRow) throw new Error("해당 ID의 학생을 찾을 수 없습니다.");
+    
     const studentInfo = {};
-    studentHeaders.forEach((header, i) => {
-      studentInfo[header] = studentInfoRow[i];
-    });
+    studentHeaders.forEach((header, i) => { studentInfo[header] = studentInfoRow[i]; });
 
-    // 2. 나머지 정보들을 헬퍼 함수로 가져오기
     return {
       info: studentInfo,
       registrations: getDataByStudentId_("수강신청", studentId),
@@ -91,20 +75,114 @@ function getStudentDetails(studentId) {
       progress: getDataByStudentId_("진도", studentId)
     };
   } catch (e) {
-    // 오류를 클라이언트에 전파하기 위해 객체로 반환
     return { error: true, message: e.message };
+  }
+}
+
+// ----------------- 교육비 및 과목 관련 함수 -----------------
+
+function getSubjects() {
+  const data = subjectSheet.getDataRange().getValues();
+  const headers = data.shift();
+  return data.map(row => {
+    const subject = {};
+    headers.forEach((h, i) => subject[h] = row[i]);
+    return subject;
+  });
+}
+
+function calculateAndRecordPayment(paymentData) {
+  try {
+    const { studentId, studentName, subjectId, months } = paymentData;
+    const allSubjects = getSubjects();
+    const subjectInfo = allSubjects.find(s => s.과목ID == subjectId);
+    if (!subjectInfo) throw new Error("과목 정보를 찾을 수 없습니다.");
+    const studentInfo = getStudentDetails(studentId).info;
+    if (!studentInfo) throw new Error("학생 정보를 찾을 수 없습니다.");
+
+    let baseFee = subjectInfo.월수강료 * months;
+    let discountAmount = 0;
+    let discountReason = [];
+
+    if (months == 3 && subjectInfo['3개월 할인율'] > 0) {
+      let monthDiscount = baseFee * subjectInfo['3개월 할인율'];
+      discountAmount += monthDiscount;
+      discountReason.push(`3개월 할인 (${subjectInfo['3개월 할인율']*100}%)`);
+    }
+    if (months == 12 && subjectInfo['12개월 할인율'] > 0) {
+       let monthDiscount = baseFee * subjectInfo['12개월 할인율'];
+      discountAmount += monthDiscount;
+      discountReason.push(`12개월 할인 (${subjectInfo['12개월 할인율']*100}%)`);
+    }
+
+    const familyGroupId = studentInfo['가족 그룹 ID'];
+    if (familyGroupId) {
+      const studentData = studentSheet.getDataRange().getValues();
+      const familyMembers = studentData.filter(row => row[4] === familyGroupId && row[0] !== studentId);
+      if (familyMembers.length > 0) {
+        const settingsData = settingsSheet.getRange("A2:B2").getValues();
+        const siblingDiscount = settingsData[0][1] || 0;
+        if (siblingDiscount > 0) {
+          discountAmount += siblingDiscount;
+          discountReason.push("형제 할인");
+        }
+      }
+    }
+
+    const finalAmount = baseFee - discountAmount;
+
+    paymentSheet.appendRow([ "P" + new Date().getTime(), studentId, studentName, new Date(), finalAmount, paymentData.paymentMethod, paymentData.cardCompany, `[${subjectInfo.과목명}/${months}개월] ${discountReason.join(', ')}` ]);
+    registrationSheet.appendRow([ "R" + new Date().getTime(), studentId, studentName, subjectId, new Date().getMonth() + 1 ]);
+
+    return { success: true, message: "납부 처리가 완료되었습니다." };
+  } catch (e) {
+    return { success: false, message: "오류 발생: " + e.message };
+  }
+}
+
+// ----------------- 출결 및 진도 관련 함수 -----------------
+
+/**
+ * 출결과 진도를 함께 기록합니다.
+ * @param {Object} recordData - 출결 및 진도 데이터
+ * @returns {Object} - 성공 또는 실패 메시지
+ */
+function recordAttendanceAndProgress(recordData) {
+  try {
+    const { studentId, studentName, classDate, attendanceStatus, subjectId, classContent, teacherName } = recordData;
+    const classDateObj = new Date(classDate);
+
+    // 1. 출결 기록
+    attendanceSheet.appendRow([
+      "A" + new Date().getTime(),
+      studentId,
+      studentName,
+      classDateObj,
+      attendanceStatus
+    ]);
+
+    // 2. 진도 기록 (출석한 경우에만)
+    if (attendanceStatus === "출석") {
+      progressSheet.appendRow([
+        "PG" + new Date().getTime(),
+        studentId,
+        studentName,
+        classDateObj,
+        subjectId,
+        classContent,
+        teacherName
+      ]);
+    }
+    
+    return { success: true, message: "출결 및 진도 기록이 완료되었습니다." };
+  } catch (e) {
+    return { success: false, message: "기록 중 오류 발생: " + e.message };
   }
 }
 
 
 // ----------------- 내부 헬퍼 함수 -----------------
 
-/**
- * 특정 시트에서 학생 ID로 데이터를 필터링하여 가져옵니다. (내부용)
- * @param {string} sheetName - 데이터를 가져올 시트 이름
- * @param {string} studentId - 필터링할 학생 ID
- * @returns {Array<Object>} - 필터링된 데이터 배열
- */
 function getDataByStudentId_(sheetName, studentId) {
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return [];
@@ -113,21 +191,19 @@ function getDataByStudentId_(sheetName, studentId) {
   const headers = data.shift();
   const studentIdIndex = headers.indexOf("학생ID");
 
-  if (studentIdIndex === -1) return []; // 학생ID 열이 없으면 빈 배열 반환
+  if (studentIdIndex === -1) return [];
 
   const results = [];
   data.forEach(row => {
     if (row[studentIdIndex] === studentId) {
       const record = {};
       headers.forEach((header, i) => {
-        // 날짜 객체는 문자열로 변환하여 전송
-        record[header] = (row[i] instanceof Date) ? row[i].toLocaleDateString() : row[i];
+        record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
       });
       results.push(record);
     }
   });
   
-  // 최신 데이터가 위로 오도록 정렬 (날짜 관련 열이 있는 경우)
   const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
   if(dateColumn) {
     results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
