@@ -1,6 +1,6 @@
 <!-- javascript.html -->
 <script>
-document.addEventListener("DOMContentLoaded", function() {
+jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $를 인자로 받음
   // --- UI 요소 변수 선언 ---
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-name');
@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // --- 이벤트 리스너 등록 ---
   searchForm.addEventListener('submit', handleSearch);
-  addNewStudentBtn.addEventListener('click', openAddStudentModal);
+  addNewStudentBtn.addEventListener('click', () => $('#add-student-modal').modal('show'));
   saveStudentBtn.addEventListener('click', saveNewStudent);
   openEditModalBtn.addEventListener('click', openEditStudentModal);
   updateStudentBtn.addEventListener('click', updateStudent);
