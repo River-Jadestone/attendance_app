@@ -1,4 +1,4 @@
-// Code.gs
+// Code.gs (교육비 계산 로직 수정)
 
 // ----------------- 설정 -----------------
 const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
@@ -100,7 +100,10 @@ function calculateAndRecordPayment(paymentData) {
     const studentInfo = getStudentDetails(studentId).info;
     if (!studentInfo) throw new Error("학생 정보를 찾을 수 없습니다.");
 
-    let baseFee = subjectInfo.월수강료 * months;
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // 수정된 부분: 월수강료를 숫자로 변환하여 계산 오류 방지
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    let baseFee = parseFloat(subjectInfo.월수강료) * parseInt(months, 10);
     let discountAmount = 0;
     let discountReason = [];
 
@@ -121,7 +124,7 @@ function calculateAndRecordPayment(paymentData) {
       const familyMembers = studentData.filter(row => row[4] === familyGroupId && row[0] !== studentId);
       if (familyMembers.length > 0) {
         const settingsData = settingsSheet.getRange("A2:B2").getValues();
-        const siblingDiscount = settingsData[0][1] || 0;
+        const siblingDiscount = parseFloat(settingsData[0][1]) || 0;
         if (siblingDiscount > 0) {
           discountAmount += siblingDiscount;
           discountReason.push("형제 할인");
@@ -142,36 +145,15 @@ function calculateAndRecordPayment(paymentData) {
 
 // ----------------- 출결 및 진도 관련 함수 -----------------
 
-/**
- * 출결과 진도를 함께 기록합니다.
- * @param {Object} recordData - 출결 및 진도 데이터
- * @returns {Object} - 성공 또는 실패 메시지
- */
 function recordAttendanceAndProgress(recordData) {
   try {
     const { studentId, studentName, classDate, attendanceStatus, subjectId, classContent, teacherName } = recordData;
     const classDateObj = new Date(classDate);
 
-    // 1. 출결 기록
-    attendanceSheet.appendRow([
-      "A" + new Date().getTime(),
-      studentId,
-      studentName,
-      classDateObj,
-      attendanceStatus
-    ]);
+    attendanceSheet.appendRow([ "A" + new Date().getTime(), studentId, studentName, classDateObj, attendanceStatus ]);
 
-    // 2. 진도 기록 (출석한 경우에만)
     if (attendanceStatus === "출석") {
-      progressSheet.appendRow([
-        "PG" + new Date().getTime(),
-        studentId,
-        studentName,
-        classDateObj,
-        subjectId,
-        classContent,
-        teacherName
-      ]);
+      progressSheet.appendRow([ "PG" + new Date().getTime(), studentId, studentName, classDateObj, subjectId, classContent, teacherName ]);
     }
     
     return { success: true, message: "출결 및 진도 기록이 완료되었습니다." };
