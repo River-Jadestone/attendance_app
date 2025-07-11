@@ -1,4 +1,4 @@
-// Code.gs (교육비 계산 로직 수정)
+// Code.gs (날짜 형식 수정)
 
 // ----------------- 설정 -----------------
 const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
@@ -71,7 +71,7 @@ function getStudentDetails(studentId) {
       info: studentInfo,
       registrations: getDataByStudentId_("수강신청", studentId),
       payments: getDataByStudentId_("납부내역", studentId),
-      attendance: getDataByStudentId_("출결", studentId),
+      attendance: getDataByStudentId_("출결", studentId), // 달력용 데이터
       progress: getDataByStudentId_("진도", studentId)
     };
   } catch (e) {
@@ -100,9 +100,6 @@ function calculateAndRecordPayment(paymentData) {
     const studentInfo = getStudentDetails(studentId).info;
     if (!studentInfo) throw new Error("학생 정보를 찾을 수 없습니다.");
 
-    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-    // 수정된 부분: 월수강료를 숫자로 변환하여 계산 오류 방지
-    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
     let baseFee = parseFloat(subjectInfo.월수강료) * parseInt(months, 10);
     let discountAmount = 0;
     let discountReason = [];
@@ -178,17 +175,39 @@ function getDataByStudentId_(sheetName, studentId) {
   const results = [];
   data.forEach(row => {
     if (row[studentIdIndex] === studentId) {
-      const record = {};
-      headers.forEach((header, i) => {
-        record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
-      });
-      results.push(record);
+      // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+      // 수정된 부분: 출결 시트인 경우 달력 형식에 맞는 데이터로 가공
+      // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+      if (sheetName === "출결") {
+        const dateIndex = headers.indexOf("출석 날짜");
+        const statusIndex = headers.indexOf("출결 상태");
+        const status = row[statusIndex];
+        let color = 'gray';
+        if (status === '출석') color = '#28a745'; // green
+        if (status === '결석') color = '#dc3545'; // red
+        if (status === '보강') color = '#007bff'; // blue
+
+        results.push({
+          title: status,
+          date: Utilities.formatDate(new Date(row[dateIndex]), "GMT+9", "yyyy-MM-dd"),
+          color: color
+        });
+
+      } else {
+        const record = {};
+        headers.forEach((header, i) => {
+          record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
+        });
+        results.push(record);
+      }
     }
   });
   
-  const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
-  if(dateColumn) {
-    results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
+  if (sheetName !== "출결") {
+      const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
+      if(dateColumn) {
+        results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
+      }
   }
 
   return results;
