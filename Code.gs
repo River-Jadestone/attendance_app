@@ -1,18 +1,19 @@
-// Code.gs (날짜 형식 수정)
+// Code.gs (계산 로직 강화 및 분리)
 
 // ----------------- 설정 -----------------
 const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
-const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-// 각 시트 이름에 해당하는 변수 설정
-const studentSheet = ss.getSheetByName("학생정보");
-const subjectSheet = ss.getSheetByName("과목정보");
-const paymentSheet = ss.getSheetByName("납부내역");
-const registrationSheet = ss.getSheetByName("수강신청");
-const attendanceSheet = ss.getSheetByName("출결");
-const progressSheet = ss.getSheetByName("진도");
-const familySheet = ss.getSheetByName("가족그룹");
-const settingsSheet = ss.getSheetByName("설정");
+// 시트 이름은 상수로 관리하여 오타를 방지합니다.
+const SHEETS = {
+  STUDENT: "학생정보",
+  SUBJECT: "과목정보",
+  PAYMENT: "납부내역",
+  REGISTRATION: "수강신청",
+  ATTENDANCE: "출결",
+  PROGRESS: "진도",
+  FAMILY: "가족그룹",
+  SETTINGS: "설정"
+};
 
 
 // ----------------- 웹 앱 진입점 -----------------
@@ -32,7 +33,9 @@ function include(filename) {
 // ----------------- 학생 관련 함수 -----------------
 
 function searchStudent(name) {
-  if (!name) return [];
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
+  if (!name || !studentSheet) return [];
   const studentData = studentSheet.getDataRange().getValues();
   const headers = studentData.shift();
   const results = [];
@@ -48,6 +51,8 @@ function searchStudent(name) {
 
 function addStudent(studentInfo) {
   try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
     const newId = "S" + new Date().getTime();
     const familyGroupId = studentInfo.familyGroupId || "F" + new Date().getTime();
     studentSheet.appendRow([ newId, studentInfo.name, studentInfo.age, studentInfo.school, familyGroupId ]);
@@ -59,20 +64,13 @@ function addStudent(studentInfo) {
 
 function getStudentDetails(studentId) {
   try {
-    const studentData = studentSheet.getDataRange().getValues();
-    const studentHeaders = studentData.shift();
-    const studentInfoRow = studentData.find(row => row[0] === studentId);
-    if (!studentInfoRow) throw new Error("해당 ID의 학생을 찾을 수 없습니다.");
-    
-    const studentInfo = {};
-    studentHeaders.forEach((header, i) => { studentInfo[header] = studentInfoRow[i]; });
-
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     return {
-      info: studentInfo,
-      registrations: getDataByStudentId_("수강신청", studentId),
-      payments: getDataByStudentId_("납부내역", studentId),
-      attendance: getDataByStudentId_("출결", studentId), // 달력용 데이터
-      progress: getDataByStudentId_("진도", studentId)
+      info: getStudentInfo_(ss, studentId),
+      registrations: getDataByStudentId_(ss, SHEETS.REGISTRATION, studentId),
+      payments: getDataByStudentId_(ss, SHEETS.PAYMENT, studentId),
+      attendance: getAttendanceEvents_(ss, studentId),
+      progress: getDataByStudentId_(ss, SHEETS.PROGRESS, studentId)
     };
   } catch (e) {
     return { error: true, message: e.message };
@@ -82,6 +80,8 @@ function getStudentDetails(studentId) {
 // ----------------- 교육비 및 과목 관련 함수 -----------------
 
 function getSubjects() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const subjectSheet = ss.getSheetByName(SHEETS.SUBJECT);
   const data = subjectSheet.getDataRange().getValues();
   const headers = data.shift();
   return data.map(row => {
@@ -91,37 +91,51 @@ function getSubjects() {
   });
 }
 
-function calculateAndRecordPayment(paymentData) {
+/**
+ * ★★★★★ 새로 추가된 함수 ★★★★★
+ * 교육비를 계산만 하고 결과를 반환합니다. (프론트엔드 미리보기용)
+ */
+function calculateTuitionFee(data) {
   try {
-    const { studentId, studentName, subjectId, months } = paymentData;
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const { studentId, subjectId, months } = data;
+
     const allSubjects = getSubjects();
     const subjectInfo = allSubjects.find(s => s.과목ID == subjectId);
-    if (!subjectInfo) throw new Error("과목 정보를 찾을 수 없습니다.");
-    const studentInfo = getStudentDetails(studentId).info;
-    if (!studentInfo) throw new Error("학생 정보를 찾을 수 없습니다.");
+    if (!subjectInfo) return { success: false, message: "과목 정보 없음" };
 
-    let baseFee = parseFloat(subjectInfo.월수강료) * parseInt(months, 10);
+    const studentInfo = getStudentInfo_(ss, studentId);
+    if (!studentInfo) return { success: false, message: "학생 정보 없음" };
+
+    // 월수강료에서 숫자만 추출하여 계산
+    const monthlyFee = parseFloat(String(subjectInfo.월수강료).replace(/[^\d.-]/g, ''));
+    if (isNaN(monthlyFee)) throw new Error("월수강료가 숫자가 아닙니다.");
+
+    let baseFee = monthlyFee * parseInt(months, 10);
     let discountAmount = 0;
     let discountReason = [];
 
-    if (months == 3 && subjectInfo['3개월 할인율'] > 0) {
-      let monthDiscount = baseFee * subjectInfo['3개월 할인율'];
-      discountAmount += monthDiscount;
-      discountReason.push(`3개월 할인 (${subjectInfo['3개월 할인율']*100}%)`);
+    // 할인율 적용
+    const discountRate3 = parseFloat(subjectInfo['3개월 할인율']);
+    const discountRate12 = parseFloat(subjectInfo['12개월 할인율']);
+    if (months == 3 && discountRate3 > 0) {
+      discountAmount += baseFee * discountRate3;
+      discountReason.push(`3개월 할인 (${discountRate3 * 100}%)`);
     }
-    if (months == 12 && subjectInfo['12개월 할인율'] > 0) {
-       let monthDiscount = baseFee * subjectInfo['12개월 할인율'];
-      discountAmount += monthDiscount;
-      discountReason.push(`12개월 할인 (${subjectInfo['12개월 할인율']*100}%)`);
+    if (months == 12 && discountRate12 > 0) {
+      discountAmount += baseFee * discountRate12;
+      discountReason.push(`12개월 할인 (${discountRate12 * 100}%)`);
     }
 
+    // 형제 할인 적용
     const familyGroupId = studentInfo['가족 그룹 ID'];
     if (familyGroupId) {
+      const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
       const studentData = studentSheet.getDataRange().getValues();
       const familyMembers = studentData.filter(row => row[4] === familyGroupId && row[0] !== studentId);
       if (familyMembers.length > 0) {
-        const settingsData = settingsSheet.getRange("A2:B2").getValues();
-        const siblingDiscount = parseFloat(settingsData[0][1]) || 0;
+        const settingsSheet = ss.getSheetByName(SHEETS.SETTINGS);
+        const siblingDiscount = parseFloat(settingsSheet.getRange("B2").getValue()) || 0;
         if (siblingDiscount > 0) {
           discountAmount += siblingDiscount;
           discountReason.push("형제 할인");
@@ -130,9 +144,29 @@ function calculateAndRecordPayment(paymentData) {
     }
 
     const finalAmount = baseFee - discountAmount;
+    return { success: true, finalAmount: finalAmount, details: discountReason.join(', ') };
 
-    paymentSheet.appendRow([ "P" + new Date().getTime(), studentId, studentName, new Date(), finalAmount, paymentData.paymentMethod, paymentData.cardCompany, `[${subjectInfo.과목명}/${months}개월] ${discountReason.join(', ')}` ]);
-    registrationSheet.appendRow([ "R" + new Date().getTime(), studentId, studentName, subjectId, new Date().getMonth() + 1 ]);
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function calculateAndRecordPayment(paymentData) {
+  try {
+    const calculationResult = calculateTuitionFee(paymentData);
+    if (!calculationResult.success) {
+      throw new Error(calculationResult.message);
+    }
+
+    const { studentId, studentName, subjectId, months } = paymentData;
+    const finalAmount = calculationResult.finalAmount;
+    const details = calculationResult.details;
+    
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const subjectInfo = getSubjects().find(s => s.과목ID == subjectId);
+
+    ss.getSheetByName(SHEETS.PAYMENT).appendRow([ "P" + new Date().getTime(), studentId, studentName, new Date(), finalAmount, paymentData.paymentMethod, paymentData.cardCompany, `[${subjectInfo.과목명}/${months}개월] ${details}` ]);
+    ss.getSheetByName(SHEETS.REGISTRATION).appendRow([ "R" + new Date().getTime(), studentId, studentName, subjectId, new Date().getMonth() + 1 ]);
 
     return { success: true, message: "납부 처리가 완료되었습니다." };
   } catch (e) {
@@ -144,13 +178,14 @@ function calculateAndRecordPayment(paymentData) {
 
 function recordAttendanceAndProgress(recordData) {
   try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const { studentId, studentName, classDate, attendanceStatus, subjectId, classContent, teacherName } = recordData;
     const classDateObj = new Date(classDate);
 
-    attendanceSheet.appendRow([ "A" + new Date().getTime(), studentId, studentName, classDateObj, attendanceStatus ]);
+    ss.getSheetByName(SHEETS.ATTENDANCE).appendRow([ "A" + new Date().getTime(), studentId, studentName, classDateObj, attendanceStatus ]);
 
     if (attendanceStatus === "출석") {
-      progressSheet.appendRow([ "PG" + new Date().getTime(), studentId, studentName, classDateObj, subjectId, classContent, teacherName ]);
+      ss.getSheetByName(SHEETS.PROGRESS).appendRow([ "PG" + new Date().getTime(), studentId, studentName, classDateObj, subjectId, classContent, teacherName ]);
     }
     
     return { success: true, message: "출결 및 진도 기록이 완료되었습니다." };
@@ -162,53 +197,63 @@ function recordAttendanceAndProgress(recordData) {
 
 // ----------------- 내부 헬퍼 함수 -----------------
 
-function getDataByStudentId_(sheetName, studentId) {
-  const sheet = ss.getSheetByName(sheetName);
+function getStudentInfo_(ss, studentId) {
+  const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
+  const studentData = studentSheet.getDataRange().getValues();
+  const headers = studentData.shift();
+  const studentInfoRow = studentData.find(row => row[0] === studentId);
+  if (!studentInfoRow) return null;
+  const studentInfo = {};
+  headers.forEach((header, i) => { studentInfo[header] = studentInfoRow[i]; });
+  return studentInfo;
+}
+
+function getAttendanceEvents_(ss, studentId) {
+  const sheet = ss.getSheetByName(SHEETS.ATTENDANCE);
   if (!sheet) return [];
-  
   const data = sheet.getDataRange().getValues();
   const headers = data.shift();
   const studentIdIndex = headers.indexOf("학생ID");
-
+  const dateIndex = headers.indexOf("출석 날짜");
+  const statusIndex = headers.indexOf("출결 상태");
   if (studentIdIndex === -1) return [];
 
   const results = [];
   data.forEach(row => {
     if (row[studentIdIndex] === studentId) {
-      // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-      // 수정된 부분: 출결 시트인 경우 달력 형식에 맞는 데이터로 가공
-      // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-      if (sheetName === "출결") {
-        const dateIndex = headers.indexOf("출석 날짜");
-        const statusIndex = headers.indexOf("출결 상태");
-        const status = row[statusIndex];
-        let color = 'gray';
-        if (status === '출석') color = '#28a745'; // green
-        if (status === '결석') color = '#dc3545'; // red
-        if (status === '보강') color = '#007bff'; // blue
+      const status = row[statusIndex];
+      let color = 'gray';
+      if (status === '출석') color = '#28a745';
+      if (status === '결석') color = '#dc3545';
+      if (status === '보강') color = '#007bff';
+      results.push({ title: status, date: Utilities.formatDate(new Date(row[dateIndex]), "UTC", "yyyy-MM-dd"), color: color });
+    }
+  });
+  return results;
+}
 
-        results.push({
-          title: status,
-          date: Utilities.formatDate(new Date(row[dateIndex]), "GMT+9", "yyyy-MM-dd"),
-          color: color
-        });
+function getDataByStudentId_(ss, sheetName, studentId) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const headers = data.shift();
+  const studentIdIndex = headers.indexOf("학생ID");
+  if (studentIdIndex === -1) return [];
 
-      } else {
-        const record = {};
-        headers.forEach((header, i) => {
-          record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
-        });
-        results.push(record);
-      }
+  const results = [];
+  data.forEach(row => {
+    if (row[studentIdIndex] === studentId) {
+      const record = {};
+      headers.forEach((header, i) => {
+        record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
+      });
+      results.push(record);
     }
   });
   
-  if (sheetName !== "출결") {
-      const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
-      if(dateColumn) {
-        results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
-      }
+  const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
+  if(dateColumn) {
+    results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
   }
-
   return results;
 }
