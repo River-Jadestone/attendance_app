@@ -18,6 +18,13 @@
       .fc-day-sun a { color: red; }
       .card-header b { float: left; }
       .card-header .btn-sm { float: right; margin-top: -4px; }
+      /* ★★★★★ 추가된 부분: 모달 z-index 수정 ★★★★★ */
+      .modal {
+        z-index: 1050; /* Bootstrap 기본 모달보다 높은 값 */
+      }
+      .modal-backdrop {
+        z-index: 1040; /* Bootstrap 기본 백드롭보다 높은 값 */
+      }
     </style>
   </head>
   <body>
