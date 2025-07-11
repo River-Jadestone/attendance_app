@@ -246,7 +246,10 @@ document.addEventListener("DOMContentLoaded", function() {
     table += '</tr></thead><tbody>';
     data.forEach(row => {
       table += '<tr>';
-      headers.forEach(h => table += `<td>${row[h] || ''}</td>`);
+      headers.forEach(h => {
+        const key = (h === '과목명' && row.hasOwnProperty('과목명')) ? '과목명' : h;
+        table += `<td>${row[key] || ''}</td>`;
+      });
       table += '</tr>';
     });
     table += '</tbody></table>';
