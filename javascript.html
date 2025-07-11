@@ -11,8 +11,8 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
   const addNewStudentBtn = document.getElementById('add-new-student-btn');
   const saveStudentBtn = document.getElementById('save-student-btn');
   const newFamilyGroupSelect = document.getElementById('new-family-group');
-  const openEditModalBtn = document.getElementById('open-edit-modal-btn');
-  const updateStudentBtn = document.getElementById('update-student-btn');
+  const openEditModalBtn = document.getElementById('open-edit-modal-btn'); // 이제 사용 안함
+  const updateStudentBtn = document.getElementById('update-student-btn'); // 이제 사용 안함
 
   // 결제 관련
   const openPaymentModalBtn = document.getElementById('open-payment-modal-btn');
@@ -32,12 +32,35 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
   let calendar;
   let currentStudent = {};
 
+  // ★★★★★ 추가된 요소: 확장된 상세 정보 영역 ★★★★★
+  const studentDetailsExpanded = document.getElementById('student-details-expanded');
+  const expandedDetailsTitle = document.getElementById('expanded-details-title');
+  const detailsLoaderExpanded = document.getElementById('details-loader-expanded');
+  const detailsContentExpanded = document.getElementById('details-content-expanded');
+
+  // 기본 정보 표시/수정 관련
+  const infoDisplayDiv = document.querySelector('.info-display');
+  const infoEditDiv = document.querySelector('.info-edit');
+  const editInfoBtn = document.getElementById('edit-info-btn');
+  const saveInfoBtn = document.getElementById('save-info-btn');
+  const cancelEditBtn = document.getElementById('cancel-edit-btn');
+
+  const displayStudentId = document.getElementById('display-student-id');
+  const displayName = document.getElementById('display-name');
+  const displayAge = document.getElementById('display-age');
+  const displaySchool = document.getElementById('display-school');
+  const displayFamilyGroupId = document.getElementById('display-family-group-id');
+
+  const editNameInput = document.getElementById('edit-name');
+  const editAgeInput = document.getElementById('edit-age');
+  const editSchoolInput = document.getElementById('edit-school');
+  const editFamilyGroupSelect = document.getElementById('edit-family-group');
+
+
   // --- 이벤트 리스너 등록 ---
   searchForm.addEventListener('submit', handleSearch);
   addNewStudentBtn.addEventListener('click', openAddStudentModal);
   saveStudentBtn.addEventListener('click', saveNewStudent);
-  openEditModalBtn.addEventListener('click', openEditStudentModal);
-  updateStudentBtn.addEventListener('click', updateStudent);
   openPaymentModalBtn.addEventListener('click', openPaymentModal);
   recordPaymentBtn.addEventListener('click', recordPayment);
   recordAttendanceBtn.addEventListener('click', recordAttendance);
@@ -51,9 +74,14 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     progressDetailsDiv.style.display = (attendanceStatusSelect.value === '출석') ? 'block' : 'none';
   });
 
+  // ★★★★★ 추가된 이벤트 리스너: 인라인 수정 버튼 ★★★★★
+  editInfoBtn.addEventListener('click', toggleEditMode);
+  saveInfoBtn.addEventListener('click', saveEditedInfo);
+  cancelEditBtn.addEventListener('click', cancelEditMode);
+
   // ★★★★★ 수정된 부분: 이벤트 위임 사용 ★★★★★
   resultsDiv.addEventListener('click', function(event) {
-    if (event.target && event.target.classList.contains('view-details-btn')) {
+    if (event.target && event.target.classList.contains('btn-info')) { // '상세보기' 버튼 클릭
       const studentId = event.target.getAttribute('data-student-id');
       viewDetails(studentId);
     }
@@ -64,6 +92,7 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     e.preventDefault();
     loader.style.display = 'block';
     resultsDiv.innerHTML = '';
+    studentDetailsExpanded.style.display = 'none'; // 검색 시 상세 정보 숨김
     google.script.run.withSuccessHandler(displayResults).withFailureHandler(showError).searchStudent(searchInput.value.trim());
   }
 
@@ -72,30 +101,48 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     if (students.length === 0) { resultsDiv.innerHTML = '<p class="text-center">검색 결과가 없습니다.</p>'; return; }
     let table = '<table class="table table-hover"><thead><tr><th>학생ID</th><th>이름</th><th>나이</th><th>학교</th><th>작업</th></tr></thead><tbody>';
     students.forEach(student => {
-      // ★★★★★ 수정된 부분: onclick 제거, data-id 추가 ★★★★★
-      table += `<tr><td>${student.학생ID}</td><td>${student.이름}</td><td>${student.나이}</td><td>${student.학교}</td><td><button class="btn btn-sm btn-info view-details-btn" data-student-id="${student.학생ID}">상세보기</button></td></tr>`;
+      // ★★★★★ 수정된 부분: onclick 제거, data-student-id 추가 ★★★★★
+      table += `<tr><td>${student.학생ID}</td><td>${student.이름}</td><td>${student.나이}</td><td>${student.학교}</td><td><button class="btn btn-sm btn-info" data-student-id="${student.학생ID}">상세보기</button></td></tr>`;
     });
     table += '</tbody></table>';
     resultsDiv.innerHTML = table;
   }
 
-  // ★★★★★ 수정된 부분: window.viewDetails 제거, 일반 함수로 변경 ★★★★★
+  // ★★★★★ 수정된 부분: 모달 대신 확장 영역 사용 ★★★★★
   function viewDetails(studentId) {
-    $('#student-details-modal').modal('show');
-    $('#details-loader').show();
-    $('#details-content').hide();
+    studentDetailsExpanded.style.display = 'block'; // 확장 영역 표시
+    detailsLoaderExpanded.style.display = 'block';
+    detailsContentExpanded.style.display = 'none';
     google.script.run.withSuccessHandler(displayStudentDetails).withFailureHandler(showError).getStudentDetails(studentId);
   }
 
   function displayStudentDetails(data) {
-    if (data.error) { showError(data); $('#student-details-modal').modal('hide'); return; }
-    $('#details-loader').hide();
-    $('#details-content').show();
+    if (data.error) { showError(data); studentDetailsExpanded.style.display = 'none'; return; }
+    detailsLoaderExpanded.style.display = 'none';
+    detailsContentExpanded.style.display = 'block';
     
-    currentStudent = data.info;
-    $('#details-modal-title').text(`${currentStudent.이름} (${currentStudent.학생ID}) 학생 상세 정보`);
+    currentStudent = data.info; // 현재 학생 정보 저장
+    expandedDetailsTitle.textContent = `${currentStudent.이름} (${currentStudent.학생ID}) 학생 상세 정보`;
 
-    $('#info-content').html(`<p><strong>나이:</strong> ${currentStudent.나이}</p><p><strong>학교:</strong> ${currentStudent.학교}</p><p><strong>가족 그룹 ID:</strong> ${currentStudent['가족 그룹 ID']}</p>`);
+    // 기본 정보 표시 모드 업데이트
+    displayStudentId.textContent = currentStudent.학생ID;
+    displayName.textContent = currentStudent.이름;
+    displayAge.textContent = currentStudent.나이;
+    displaySchool.textContent = currentStudent.학교;
+    displayFamilyGroupId.textContent = currentStudent['가족 그룹 ID'] || '없음';
+
+    // 수정 모드 필드 초기화 (취소 시 사용)
+    editNameInput.value = currentStudent.이름;
+    editAgeInput.value = currentStudent.나이;
+    editSchoolInput.value = currentStudent.학교;
+
+    // 기본 정보는 항상 표시 모드로 시작
+    infoDisplayDiv.style.display = 'block';
+    infoEditDiv.style.display = 'none';
+    editInfoBtn.style.display = 'inline-block';
+    saveInfoBtn.style.display = 'none';
+    cancelEditBtn.style.display = 'none';
+
     $('#payments-content').html(createTable(data.payments, ['납부일', '납부 금액', '결제 수단', '비고']));
     $('#progress-content').html(createTable(data.progress, ['수업 날짜', '과목명', '수업 내용', '수업 선생님']));
     
@@ -104,10 +151,11 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
       initialView: 'dayGridMonth', locale: 'ko',
       headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
       events: data.attendance,
-      dateClick: (info) => openAttendanceModal(info.dateStr)
+      dateClick: (info) => openAttendanceModal(info.dateStr) // 달력 날짜 클릭 시 모달 열기
     });
     calendar.render();
-    $('#student-details-modal').css('overflow-y', 'auto');
+    // ★★★★★ 스크롤 버그 수정: 달력 렌더링 후 스크롤 가능하게 함 ★★★★★
+    document.body.style.overflow = 'auto'; 
   }
 
   function openAddStudentModal() {
@@ -127,7 +175,7 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     if (!studentInfo.name || !studentInfo.age || !studentInfo.school) { alert('이름, 나이, 학교는 필수입니다.'); return; }
     if (studentInfo.familyGroupId === '__NEW__' && !studentInfo.newFamilyGroupDesc) { alert('새 가족 그룹 설명을 입력해주세요.'); return; }
     
-    this.disabled = true;
+    saveStudentBtn.disabled = true;
     google.script.run.withSuccessHandler(response => {
       alert(response.message);
       if (response.success) {
@@ -139,40 +187,66 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
     }).withFailureHandler(showError).addStudent(studentInfo);
   }
 
-  function openEditStudentModal() {
-    $('#edit-student-id').val(currentStudent.학생ID);
-    $('#edit-name').val(currentStudent.이름);
-    $('#edit-age').val(currentStudent.나이);
-    $('#edit-school').val(currentStudent.학교);
+  // ★★★★★ 추가된 함수: 인라인 수정 모드 토글 ★★★★★
+  function toggleEditMode() {
+    infoDisplayDiv.style.display = 'none';
+    infoEditDiv.style.display = 'block';
+    editInfoBtn.style.display = 'none';
+    saveInfoBtn.style.display = 'inline-block';
+    cancelEditBtn.style.display = 'inline-block';
 
+    // 수정 필드에 현재 값 채우기
+    editNameInput.value = currentStudent.이름;
+    editAgeInput.value = currentStudent.나이;
+    editSchoolInput.value = currentStudent.학교;
+
+    // 가족 그룹 드롭다운 채우기
     google.script.run.withSuccessHandler(groups => {
-      const editFamilyGroupSelect = document.getElementById('edit-family-group');
       editFamilyGroupSelect.innerHTML = '<option value="">개인 (그룹 없음)</option>';
       groups.forEach(group => editFamilyGroupSelect.innerHTML += `<option value="${group[0]}">${group[1]} (${group[0]})</option>`);
-      editFamilyGroupSelect.value = currentStudent['가족 그룹 ID'];
-      $('#edit-student-modal').modal('show');
+      editFamilyGroupSelect.value = currentStudent['가족 그룹 ID'] || ''; // 현재 가족 그룹 선택
     }).withFailureHandler(showError).getFamilyGroups();
   }
 
-  function updateStudent() {
+  // ★★★★★ 추가된 함수: 수정된 정보 저장 ★★★★★
+  function saveEditedInfo() {
     const studentData = {
-      studentId: $('#edit-student-id').val(),
-      이름: $('#edit-name').val().trim(),
-      나이: $('#edit-age').val().trim(),
-      학교: $('#edit-school').val().trim(),
-      '가족 그룹 ID': $('#edit-family-group').val()
+      studentId: currentStudent.학생ID,
+      이름: editNameInput.value.trim(),
+      나이: editAgeInput.value.trim(),
+      학교: editSchoolInput.value.trim(),
+      '가족 그룹 ID': editFamilyGroupSelect.value
     };
-    this.disabled = true;
+
+    if (!studentData.이름 || !studentData.나이 || !studentData.학교) { alert('이름, 나이, 학교는 필수입니다.'); return; }
+
+    saveInfoBtn.disabled = true;
+    cancelEditBtn.disabled = true;
+
     google.script.run.withSuccessHandler(response => {
       alert(response.message);
       if (response.success) {
-        $('#edit-student-modal').modal('hide');
-        $('#student-details-modal').modal('hide');
-        searchInput.value = studentData.이름;
-        searchForm.dispatchEvent(new Event('submit'));
+        // 성공 시, 현재 학생 정보 업데이트 및 표시 모드로 전환
+        currentStudent.이름 = studentData.이름;
+        currentStudent.나이 = studentData.나이;
+        currentStudent.학교 = studentData.학교;
+        currentStudent['가족 그룹 ID'] = studentData['가족 그룹 ID'];
+        displayStudentDetails({ info: currentStudent, payments: [], attendance: [], progress: [] }); // UI만 업데이트
+        // 실제로는 서버에서 다시 상세 정보를 가져와서 업데이트하는 것이 더 안전함
+        viewDetails(currentStudent.학생ID); 
       }
-      updateStudentBtn.disabled = false;
+      saveInfoBtn.disabled = false;
+      cancelEditBtn.disabled = false;
     }).withFailureHandler(showError).updateStudentInfo(studentData);
+  }
+
+  // ★★★★★ 추가된 함수: 수정 취소 ★★★★★
+  function cancelEditMode() {
+    infoDisplayDiv.style.display = 'block';
+    infoEditDiv.style.display = 'none';
+    editInfoBtn.style.display = 'inline-block';
+    saveInfoBtn.style.display = 'none';
+    cancelEditBtn.style.display = 'none';
   }
 
   function openPaymentModal() {
@@ -186,7 +260,7 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
   }
 
   function updateCalculatedFee() {
-    const data = { studentId: $('#payment-student-id').val(), subjectId: subjectSelect.value, months: monthsSelect.value };
+    const data = { studentId: currentStudent.학생ID, subjectId: subjectSelect.value, months: monthsSelect.value };
     if (!data.subjectId) { calculatedFeeSpan.textContent = '0원'; discountDetailsSpan.textContent = ''; return; }
     calculatedFeeSpan.textContent = '계산 중...';
     google.script.run.withSuccessHandler(result => {
@@ -208,8 +282,8 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
       alert(response.message);
       if (response.success) {
         $('#payment-modal').modal('hide');
-        $('#student-details-modal').modal('hide');
-        searchForm.dispatchEvent(new Event('submit'));
+        // 상세 정보 업데이트를 위해 다시 로드
+        viewDetails(currentStudent.학생ID);
       }
       recordPaymentBtn.disabled = false;
     }).withFailureHandler(showError).calculateAndRecordPayment(paymentData);
@@ -237,7 +311,8 @@ jQuery(document).ready(function($) { // jQuery(document).ready()로 감싸고 $�
       alert(response.message);
       if (response.success) {
         $('#attendance-modal').modal('hide');
-        $('#student-details-modal').modal('hide');
+        // 상세 정보 업데이트를 위해 다시 로드
+        viewDetails(currentStudent.학생ID);
       }
       recordAttendanceBtn.disabled = false;
     }).withFailureHandler(showError).recordAttendanceAndProgress(recordData);
