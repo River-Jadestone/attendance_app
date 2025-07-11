@@ -1,9 +1,8 @@
-// Code.gs (계산 로직 강화, 과목명 표시, 디버깅 로그 추가)
+// Code.gs (ID 생성, 정보 수정, 가족 그룹 관리, 계산 오류 수정)
 
 // ----------------- 설정 -----------------
 const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
 
-// 시트 이름은 상수로 관리하여 오타를 방지합니다.
 const SHEETS = {
   STUDENT: "학생정보",
   SUBJECT: "과목정보",
@@ -17,20 +16,14 @@ const SHEETS = {
 
 
 // ----------------- 웹 앱 진입점 -----------------
-
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('index')
-      .evaluate()
-      .setTitle('학생 관리 시스템')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  return HtmlService.createTemplateFromFile('index').evaluate().setTitle('학생 관리 시스템').addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
-
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-
-// ----------------- 학생 관련 함수 -----------------
+// ----------------- 데이터 조회 함수 -----------------
 
 function searchStudent(name) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -49,35 +42,19 @@ function searchStudent(name) {
   return results;
 }
 
-function addStudent(studentInfo) {
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
-    const newId = "S" + new Date().getTime();
-    const familyGroupId = studentInfo.familyGroupId || "F" + new Date().getTime();
-    studentSheet.appendRow([ newId, studentInfo.name, studentInfo.age, studentInfo.school, familyGroupId ]);
-    return { success: true, message: "학생이 성공적으로 추가되었습니다." };
-  } catch (e) {
-    return { success: false, message: "오류 발생: " + e.message };
-  }
-}
-
 function getStudentDetails(studentId) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     return {
       info: getStudentInfo_(ss, studentId),
-      registrations: getDataByStudentId_(ss, SHEETS.REGISTRATION, studentId),
       payments: getDataByStudentId_(ss, SHEETS.PAYMENT, studentId),
       attendance: getAttendanceEvents_(ss, studentId),
-      progress: getProgressDataWithSubjectName_(ss, studentId) // 수정된 함수 호출
+      progress: getProgressDataWithSubjectName_(ss, studentId)
     };
   } catch (e) {
     return { error: true, message: e.message };
   }
 }
-
-// ----------------- 교육비 및 과목 관련 함수 -----------------
 
 function getSubjects() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -91,33 +68,86 @@ function getSubjects() {
   });
 }
 
+function getFamilyGroups() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const familySheet = ss.getSheetByName(SHEETS.FAMILY);
+  if (!familySheet) return [];
+  return familySheet.getDataRange().getValues();
+}
+
+// ----------------- 데이터 생성/수정 함수 -----------------
+
+function addStudent(studentInfo) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
+    const familySheet = ss.getSheetByName(SHEETS.FAMILY);
+
+    const newId = getNextStudentId_(ss);
+    let familyGroupId = studentInfo.familyGroupId;
+
+    if (familyGroupId === '__NEW__') {
+      familyGroupId = "F" + new Date().getTime();
+      familySheet.appendRow([familyGroupId, studentInfo.newFamilyGroupDesc]);
+    }
+
+    studentSheet.appendRow([ newId, studentInfo.name, studentInfo.age, studentInfo.school, familyGroupId ]);
+    return { success: true, message: "학생이 성공적으로 추가되었습니다." };
+  } catch (e) {
+    return { success: false, message: "오류 발생: " + e.message };
+  }
+}
+
+function updateStudentInfo(studentData) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
+    const data = studentSheet.getDataRange().getValues();
+    const headers = data.shift();
+    const idIndex = headers.indexOf("학생ID");
+
+    const rowIndex = data.findIndex(row => row[idIndex] == studentData.studentId);
+
+    if (rowIndex > -1) {
+      const originalName = data[rowIndex][headers.indexOf("이름")];
+      const newRow = headers.map(header => studentData[header] || data[rowIndex][headers.indexOf(header)]);
+      studentSheet.getRange(rowIndex + 2, 1, 1, newRow.length).setValues([newRow]);
+
+      // 이름이 변경된 경우 다른 시트도 업데이트
+      if (originalName !== studentData.이름) {
+        updateStudentNameInOtherSheets_(ss, studentData.studentId, studentData.이름);
+      }
+      return { success: true, message: "정보가 성공적으로 수정되었습니다." };
+    } else {
+      return { success: false, message: "해당 학생을 찾을 수 없습니다." };
+    }
+  } catch (e) {
+    return { success: false, message: "수정 중 오류 발생: " + e.message };
+  }
+}
+
 function calculateTuitionFee(data) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const { studentId, subjectId, months } = data;
 
-    const allSubjects = getSubjects();
-    const subjectInfo = allSubjects.find(s => s.과목ID == subjectId);
+    const subjectInfo = getSubjects().find(s => s.과목ID == subjectId);
     if (!subjectInfo) return { success: false, message: "과목 정보 없음" };
 
     const studentInfo = getStudentInfo_(ss, studentId);
     if (!studentInfo) return { success: false, message: "학생 정보 없음" };
 
-    // ★★★★★ 월수강료 처리 및 디버깅 로그 추가 ★★★★★
-    Logger.log("Raw 월수강료 from sheet for 과목ID " + subjectInfo.과목ID + ": " + subjectInfo.월수강료);
-    const monthlyFee = parseFloat(String(subjectInfo.월수강료).replace(/[^\d.-]/g, ''));
-    Logger.log("Parsed 월수강료: " + monthlyFee);
+    const parseNumber = (value) => parseFloat(String(value).replace(/[^\d.-]/g, '')) || 0;
 
-    if (isNaN(monthlyFee)) {
-      throw new Error("월수강료가 숫자가 아닙니다. 시트 값을 확인해주세요: " + subjectInfo.월수강료);
-    }
+    const monthlyFee = parseNumber(subjectInfo.월수강료);
+    if (monthlyFee === 0) throw new Error("월수강료가 0이거나 숫자가 아닙니다.");
 
     let baseFee = monthlyFee * parseInt(months, 10);
     let discountAmount = 0;
     let discountReason = [];
 
-    const discountRate3 = parseFloat(subjectInfo['3개월 할인율']);
-    const discountRate12 = parseFloat(subjectInfo['12개월 할인율']);
+    const discountRate3 = parseNumber(subjectInfo['3개월 할인율']);
+    const discountRate12 = parseNumber(subjectInfo['12개월 할인율']);
     if (months == 3 && discountRate3 > 0) {
       discountAmount += baseFee * discountRate3;
       discountReason.push(`3개월 할인 (${discountRate3 * 100}%)`);
@@ -129,12 +159,9 @@ function calculateTuitionFee(data) {
 
     const familyGroupId = studentInfo['가족 그룹 ID'];
     if (familyGroupId) {
-      const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
-      const studentData = studentSheet.getDataRange().getValues();
-      const familyMembers = studentData.filter(row => row[4] === familyGroupId && row[0] !== studentId);
-      if (familyMembers.length > 0) {
-        const settingsSheet = ss.getSheetByName(SHEETS.SETTINGS);
-        const siblingDiscount = parseFloat(settingsSheet.getRange("B2").getValue()) || 0;
+      const studentData = ss.getSheetByName(SHEETS.STUDENT).getDataRange().getValues();
+      if (studentData.filter(row => row[4] === familyGroupId && row[0] !== studentId).length > 0) {
+        const siblingDiscount = parseNumber(ss.getSheetByName(SHEETS.SETTINGS).getRange("B2").getValue());
         if (siblingDiscount > 0) {
           discountAmount += siblingDiscount;
           discountReason.push("형제 할인");
@@ -146,7 +173,6 @@ function calculateTuitionFee(data) {
     return { success: true, finalAmount: finalAmount, details: discountReason.join(', ') };
 
   } catch (e) {
-    Logger.log("calculateTuitionFee Error: " + e.message);
     return { success: false, message: e.message };
   }
 }
@@ -154,9 +180,7 @@ function calculateTuitionFee(data) {
 function calculateAndRecordPayment(paymentData) {
   try {
     const calculationResult = calculateTuitionFee(paymentData);
-    if (!calculationResult.success) {
-      throw new Error(calculationResult.message);
-    }
+    if (!calculationResult.success) throw new Error(calculationResult.message);
 
     const { studentId, studentName, subjectId, months } = paymentData;
     const finalAmount = calculationResult.finalAmount;
@@ -173,8 +197,6 @@ function calculateAndRecordPayment(paymentData) {
     return { success: false, message: "오류 발생: " + e.message };
   }
 }
-
-// ----------------- 출결 및 진도 관련 함수 -----------------
 
 function recordAttendanceAndProgress(recordData) {
   try {
@@ -194,8 +216,25 @@ function recordAttendanceAndProgress(recordData) {
   }
 }
 
-
 // ----------------- 내부 헬퍼 함수 -----------------
+
+function getNextStudentId_(ss) {
+  const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
+  const lastRow = studentSheet.getLastRow();
+  if (lastRow < 2) return new Date().getFullYear().toString().slice(-2) + "-001";
+
+  const lastId = studentSheet.getRange(lastRow, 1).getValue();
+  const [year, number] = lastId.split('-');
+  const currentYear = new Date().getFullYear().toString().slice(-2);
+
+  let nextNumber;
+  if (year == currentYear) {
+    nextNumber = parseInt(number) + 1;
+  } else {
+    nextNumber = 1;
+  }
+  return currentYear + "-" + String(nextNumber).padStart(3, '0');
+}
 
 function getStudentInfo_(ss, studentId) {
   const studentSheet = ss.getSheetByName(SHEETS.STUDENT);
@@ -213,79 +252,55 @@ function getAttendanceEvents_(ss, studentId) {
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   const headers = data.shift();
-  const studentIdIndex = headers.indexOf("학생ID");
-  const dateIndex = headers.indexOf("출석 날짜");
-  const statusIndex = headers.indexOf("출결 상태");
+  const [studentIdIndex, dateIndex, statusIndex] = [headers.indexOf("학생ID"), headers.indexOf("출석 날짜"), headers.indexOf("출결 상태")];
   if (studentIdIndex === -1) return [];
 
-  const results = [];
-  data.forEach(row => {
-    if (row[studentIdIndex] === studentId) {
-      const status = row[statusIndex];
-      let color = 'gray';
-      if (status === '출석') color = '#28a745';
-      if (status === '결석') color = '#dc3545';
-      if (status === '보강') color = '#007bff';
-      results.push({ title: status, date: Utilities.formatDate(new Date(row[dateIndex]), "UTC", "yyyy-MM-dd"), color: color });
-    }
+  return data.filter(row => row[studentIdIndex] === studentId).map(row => {
+    const status = row[statusIndex];
+    let color = status === '출석' ? '#28a745' : status === '결석' ? '#dc3545' : status === '보강' ? '#007bff' : 'gray';
+    return { title: status, date: Utilities.formatDate(new Date(row[dateIndex]), "UTC", "yyyy-MM-dd"), color: color };
   });
-  return results;
 }
 
 function getProgressDataWithSubjectName_(ss, studentId) {
   const progressSheet = ss.getSheetByName(SHEETS.PROGRESS);
   if (!progressSheet) return [];
-  
   const allSubjects = getSubjects();
-  
   const data = progressSheet.getDataRange().getValues();
   const headers = data.shift();
   const studentIdIndex = headers.indexOf("학생ID");
   if (studentIdIndex === -1) return [];
 
-  const results = [];
-  data.forEach(row => {
-    if (row[studentIdIndex] === studentId) {
-      const record = {};
-      headers.forEach((header, i) => {
-        if (header === "과목ID") {
-          const subjectId = row[i];
-          const subject = allSubjects.find(s => s.과목ID == subjectId);
-          record["과목명"] = subject ? subject.과목명 : "알 수 없는 과목";
-        } else {
-           record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
-        }
-      });
-      results.push(record);
-    }
+  const results = data.filter(row => row[studentIdIndex] === studentId).map(row => {
+    const record = {};
+    headers.forEach((header, i) => {
+      if (header === "과목ID") {
+        const subject = allSubjects.find(s => s.과목ID == row[i]);
+        record["과목명"] = subject ? subject.과목명 : "(삭제된 과목)";
+      } else {
+        record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
+      }
+    });
+    return record;
   });
-
-  results.sort((a, b) => new Date(b["수업 날짜"]) - new Date(a["수업 날짜"]));
-  return results;
+  return results.sort((a, b) => new Date(b["수업 날짜"]) - new Date(a["수업 날짜"]));
 }
 
-function getDataByStudentId_(ss, sheetName, studentId) {
-  const sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  const headers = data.shift();
-  const studentIdIndex = headers.indexOf("학생ID");
-  if (studentIdIndex === -1) return [];
+function updateStudentNameInOtherSheets_(ss, studentId, newName) {
+  const sheetsToUpdate = [SHEETS.PAYMENT, SHEETS.REGISTRATION, SHEETS.ATTENDANCE, SHEETS.PROGRESS];
+  sheetsToUpdate.forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+    const idIndex = headers.indexOf("학생ID");
+    const nameIndex = headers.indexOf("학생 이름");
+    if (idIndex === -1 || nameIndex === -1) return;
 
-  const results = [];
-  data.forEach(row => {
-    if (row[studentIdIndex] === studentId) {
-      const record = {};
-      headers.forEach((header, i) => {
-        record[header] = (row[i] instanceof Date) ? Utilities.formatDate(row[i], "GMT+9", "yyyy. MM. dd") : row[i];
-      });
-      results.push(record);
-    }
+    data.forEach((row, i) => {
+      if (row[idIndex] == studentId) {
+        sheet.getRange(i + 2, nameIndex + 1).setValue(newName);
+      }
+    });
   });
-  
-  const dateColumn = headers.find(h => h.includes("날짜") || h.includes("납부일"));
-  if(dateColumn) {
-    results.sort((a, b) => new Date(b[dateColumn]) - new Date(a[dateColumn]));
-  }
-  return results;
 }
