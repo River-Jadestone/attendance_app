@@ -1,6 +1,6 @@
 // Code.gs (수정 버전 - 개선 적용)
 // ----------------- 설정 -----------------
-const SPREADSHEET_ID = "1LLjcP-Fp01vpLbafFKm9IkdxC7V0aeHg6ade3IV4ulY"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
+const SPREADSHEET_ID = "0000"; // <<<--- 여기에 실제 스프레드시트 ID를 입력하세요.
 const SHEETS = {
   STUDENT: "학생정보",
   SUBJECT: "과목정보",
