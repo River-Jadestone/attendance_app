@@ -1,151 +1,137 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html>
-  <head>
-    <base target="_top">
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
-    <style>
-      .container { padding-top: 20px; }
-      .modal-lg { max-width: 80%; }
-      .table-responsive { max-height: 300px; }
-      .modal-footer { justify-content: space-between; }
-      .fc-daygrid-day:hover {
-        background-color: #f0f8ff; /* Light blue hover */
-        cursor: pointer;
-      }
-      .fc-day-sat a { color: blue; }
-      .fc-day-sun a { color: red; }
-      .card-header b { float: left; }
-      .card-header .btn-sm { float: right; margin-top: -4px; }
-      /* 모달 z-index는 이제 필요 없을 수 있지만, 혹시 몰라 유지 */
-      .modal {
-        z-index: 1050;
-      }
-      .modal-backdrop {
-        z-index: 1040;
-      }
-      /* ★★★★★ 추가된 부분: 확장된 상세 정보 영역 스타일 ★★★★★ */
-      #student-details-expanded {
-        display: none; /* 초기에는 숨김 */
-        margin-top: 20px;
-        padding: 20px;
-        border: 1px solid #e0e0e0;
-        border-radius: 5px;
-        background-color: #f9f9f9;
-      }
-      .info-display, .info-edit {
-        margin-bottom: 10px;
-      }
-      .info-edit {
-        display: none; /* 초기에는 수정 필드 숨김 */
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h3 class="text-center mb-4">학생 관리 시스템</h3>
-      <div class="row"><div class="col-md-8 offset-md-2">
-        <form id="search-form"><div class="input-group mb-3">
-          <input type="text" id="search-name" class="form-control" placeholder="학생 이름을 입력하세요..." required>
-          <div class="input-group-append">
-            <button class="btn btn-primary" type="submit">검색</button>
-            <button class="btn btn-success" type="button" id="add-new-student-btn">신규 학생 추가</button>
-          </div>
-        </div></form>
-      </div></div>
-      <div id="loader" class="text-center" style="display: none;"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>
-      <div id="search-results" class="mt-4"></div>
-
-      <!-- ★★★★★ 추가된 부분: 확장된 학생 상세 정보 영역 ★★★★★ -->
-      <div id="student-details-expanded">
-        <h4 id="expanded-details-title" class="mb-4"></h4>
-        <div id="details-loader-expanded" class="text-center" style="display: none;"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>
-        <div id="details-content-expanded">
-          <div class="card mb-3">
-            <div class="card-header"><b>기본 정보</b>
-              <button class="btn btn-outline-secondary btn-sm" id="edit-info-btn">수정</button>
-              <button class="btn btn-success btn-sm" id="save-info-btn" style="display:none;">저장</button>
-              <button class="btn btn-secondary btn-sm" id="cancel-edit-btn" style="display:none;">취소</button>
-            </div>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+  <style>
+    .container { padding-top: 20px; }
+    .modal-lg { max-width: 80%; }
+    .table-responsive { max-height: 300px; }
+    .modal-footer { justify-content: space-between; }
+    .fc-daygrid-day:hover {
+      background-color: #f0f8ff;
+      cursor: pointer;
+    }
+    .fc-day-sat a { color: blue; }
+    .fc-day-sun a { color: red; }
+    .card-header b { float: left; }
+    .card-header .btn-sm { float: right; margin-left: 5px; margin-top: -4px; }
+    .modal { z-index: 2000 !important; } /* 모달 z-index 강화 (중첩 방지) */
+    .modal-backdrop { z-index: 1990 !important; }
+    #student-details-expanded {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    .info-display, .info-edit { margin-bottom: 10px; }
+    .info-edit { display: none; }
+    .text-muted {
+      color: #6c757d !important;
+      background-color: #f8f9fa;
+    }
+    .text-muted td {
+      text-decoration: line-through;
+    }
+    /* 추가: 통계 표시 스타일 */
+    #attendance-stats { margin-top: 10px; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3 class="text-center mb-4">학생 관리 시스템</h3>
+    <div id="dashboard" class="mb-4">
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <div class="card text-white bg-primary">
             <div class="card-body">
-              <div class="info-display">
-                <p><strong>학생ID:</strong> <span id="display-student-id"></span></p>
-                <p><strong>이름:</strong> <span id="display-name"></span></p>
-                <p><strong>나이:</strong> <span id="display-age"></span></p>
-                <p><strong>학교:</strong> <span id="display-school"></span></p>
-                <p><strong>가족 그룹 ID:</strong> <span id="display-family-group-id"></span></p>
-              </div>
-              <div class="info-edit">
-                <div class="form-group"><label>이름</label><input type="text" class="form-control" id="edit-name" required></div>
-                <div class="form-group"><label>나이</label><input type="number" class="form-control" id="edit-age" required></div>
-                <div class="form-group"><label>학교</label><input type="text" class="form-control" id="edit-school" required></div>
-                <div class="form-group"><label>가족 그룹</label><select class="form-control" id="edit-family-group"></select></div>
-              </div>
+              <h6 class="card-title">총 재원생</h6>
+              <h4 class="card-text" id="dashboard-active-students"><div class="spinner-border spinner-border-sm" role="status"></div></h4>
             </div>
           </div>
-          <div class="card mb-3"><div class="card-header"><b>출결 현황 (날짜를 클릭하여 기록)</b></div><div class="card-body" id="calendar-container"></div></div>
-          <div class="card mb-3"><div class="card-header"><b>납부 내역</b></div><div class="card-body table-responsive" id="payments-content"></div></div>
-          <div class="card"><div class="card-header"><b>수업 진도</b></div><div class="card-body table-responsive" id="progress-content"></div></div>
         </div>
-        <div class="text-right mt-3">
-          <button type="button" class="btn btn-primary" id="open-payment-modal-btn">수강 신청/납부</button>
+        <div class="col-md-4 mb-3">
+          <div class="card text-white bg-success">
+            <div class="card-body">
+              <h6 class="card-title">이달 신규회원</h6>
+              <h4 class="card-text" id="dashboard-monthly-new"><div class="spinner-border spinner-border-sm" role="status"></div></h4>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="card text-white bg-warning">
+            <div class="card-body">
+              <h6 class="card-title">이달 휴회회원</h6>
+              <h4 class="card-text" id="dashboard-monthly-break"><div class="spinner-border spinner-border-sm" role="status"></div></h4>
+            </div>
+          </div>
         </div>
       </div>
-
     </div>
-
-    <!-- 신규 학생 추가 Modal -->
-    <div class="modal" id="add-student-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">신규 학생 추가</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-      <div class="modal-body"><form id="add-student-form">
-        <div class="form-group"><label>이름</label><input type="text" class="form-control" id="new-name" required></div>
-        <div class="form-group"><label>나이</label><input type="number" class="form-control" id="new-age" required></div>
-        <div class="form-group"><label>학교</label><input type="text" class="form-control" id="new-school" required></div>
-        <div class="form-group"><label>가족 그룹</label><select class="form-control" id="new-family-group"></select></div>
-        <div class="form-group" id="new-family-group-desc-group" style="display:none;"><label>새 가족 그룹 설명</label><input type="text" class="form-control" id="new-family-group-desc" placeholder="예: OOO, OOO 형제"></div>
-      </form></div>
-      <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">닫기</button><button type="button" class="btn btn-primary" id="save-student-btn">저장</button></div>
-    </div></div></div>
-
-    <!-- 수강 신청 및 납부 Modal -->
-    <div class="modal fade" id="payment-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">수강 신청 및 납부</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-      <div class="modal-body"><form id="payment-form">
-        <input type="hidden" id="payment-student-id"><input type="hidden" id="payment-student-name">
-        <div class="form-group"><label>과목 선택</label><select class="form-control" id="subject-select" required></select></div>
-        <div class="form-group"><label>수강 개월</label><select class="form-control" id="months-select"><option value="1">1개월</option><option value="3">3개월 (할인)</option><option value="12">12개월 (할인)</option></select></div>
-        <hr>
-        <div class="text-right mb-3"><h5>예상 결제 금액: <span id="calculated-fee" class="font-weight-bold text-primary">0원</span></h5><small id="discount-details" class="text-muted"></small></div>
-        <div class="form-group"><label>결제 수단</label><select class="form-control" id="payment-method"><option>카드</option><option>현금</option><option>이체</option></select></div>
-        <div class="form-group" id="card-company-group"><label>카드사</label><input type="text" class="form-control" id="card-company" placeholder="카드사 입력"></div>
-      </form></div>
-      <div class="modal-footer"><button type="button" class="btn btn-success" id="record-payment-btn">납부 기록</button><button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button></div>
-    </div></div></div>
-
-    <!-- 출결 및 진도 기록 Modal -->
-    <div class="modal fade" id="attendance-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">출결 및 진도 기록</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
-      <div class="modal-body"><form id="attendance-form">
-        <input type="hidden" id="attendance-student-id"><input type="hidden" id="attendance-student-name">
-        <div class="form-group"><label>수업 날짜</label><input type="date" class="form-control" id="class-date" required></div>
-        <div class="form-group"><label>출결 상태</label><select class="form-control" id="attendance-status"><option>출석</option><option>결석</option><option>보강</option></select></div>
-        <div id="progress-details" class="mt-3 border-top pt-3">
-          <h5>진도 내용 (출석 시 자동 기록)</h5>
-          <div class="form-group"><label>과목</label><select class="form-control" id="progress-subject" required></select></div>
-          <div class="form-group"><label>수업 내용</label><textarea class="form-control" id="class-content" rows="3"></textarea></div>
-          <div class="form-group"><label>수업 선생님</label><input type="text" class="form-control" id="teacher-name"></div>
+    <div class="row"><div class="col-md-8 offset-md-2">
+      <form id="search-form"><div class="input-group mb-3">
+        <input type="text" id="search-name" class="form-control" placeholder="학생 이름을 입력하세요..." required>
+        <div class="input-group-append">
+          <button class="btn btn-primary" type="submit">검색</button>
+          <button class="btn btn-success" type="button" id="add-new-student-btn">신규 학생 추가</button>
+          <button class="btn btn-secondary" type="button" id="view-all-students-btn">전체 학생 보기</button> 
         </div>
-      </form></div>
-      <div class="modal-footer"><button type="button" class="btn btn-info" id="record-attendance-btn">기록 저장</button><button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button></div>
-    </div></div></div>
-
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js'></script>
-
-    <?!= include('javascript'); ?>
-  </body>
+      </div></form>
+    </div></div>
+    <div id="loader" class="text-center" style="display: none;"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>
+    <div id="search-results" class="mt-4"></div>
+    <div id="student-details-expanded">
+      <h4 id="expanded-details-title" class="mb-4"></h4>
+      <div id="details-loader-expanded" class="text-center" style="display: none;"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>
+      <div id="details-content-expanded">
+        <div class="card mb-3">
+          <div class="card-header"><b>기본 정보</b>
+            <button class="btn btn-warning btn-sm" id="toggle-status-btn">휴회 처리</button>
+            <button class="btn btn-outline-secondary btn-sm" id="edit-info-btn">수정</button>
+            <button class="btn btn-success btn-sm" id="save-info-btn" style="display:none;">저장</button>
+            <button class="btn btn-secondary btn-sm" id="cancel-edit-btn" style="display:none;">취소</button>
+          </div>
+          <div class="card-body">
+            <div class="info-display">
+              <p><strong>학생ID:</strong> <span id="display-student-id"></span></p>
+              <p><strong>상태:</strong> <span id="display-status"></span></p>
+              <p><strong>이름:</strong> <span id="display-name"></span></p>
+              <p><strong>담당 선생님:</strong> <span id="display-teacher"></span></p>
+              <p><strong>나이:</strong> <span id="display-age"></span></p>
+              <p><strong>학교:</strong> <span id="display-school"></span></p>
+              <p><strong>가족 그룹 ID:</strong> <span id="display-family-group-id"></span></p>
+            </div>
+            <div class="info-edit">
+              <div class="form-group"><label>이름</label><input type="text" class="form-control" id="edit-name" required></div>
+              <div class="form-group"><label>담당 선생님</label><input type="text" class="form-control" id="edit-teacher"></div>
+              <div class="form-group"><label>나이</label><input type="number" class="form-control" id="edit-age" required></div>
+              <div class="form-group"><label>학교</label><input type="text" class="form-control" id="edit-school" required></div>
+              <div class="form-group"><label>가족 그룹</label><select class="form-control" id="edit-family-group"></select></div>
+            </div>
+          </div>
+        </div>
+        <div class="card mb-3"><div class="card-header"><b>출결 현황 (날짜를 클릭하여 기록)</b></div><div class="card-body" id="calendar-container"></div>
+          <div id="attendance-stats" class="card-footer"></div> <!-- 출석 통계 표시 -->
+        </div>
+        <div class="card mb-3"><div class="card-header"><b>납부 내역</b></div><div class="card-body table-responsive" id="payments-content"></div></div>
+        <div class="card"><div class="card-header"><b>수업 진도</b></div><div class="card-body table-responsive" id="progress-content"></div></div>
+      </div>
+      <div class="text-right mt-3">
+        <button type="button" class="btn btn-primary" id="open-payment-modal-btn">수강 신청/납부</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="add-student-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">신규 학생 추가</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div><div class="modal-body"><form id="add-student-form"><div class="form-group"><label>이름</label><input type="text" class="form-control" id="new-name" required></div><div class="form-group"><label>나이</label><input type="number" class="form-control" id="new-age" required></div><div class="form-group"><label>학교</label><input type="text" class="form-control" id="new-school" required></div><div class="form-group"><label>가족 그룹</label><select class="form-control" id="new-family-group"></select></div><div class="form-group" id="new-family-group-desc-group" style="display:none;"><label>새 가족 그룹 설명</label><input type="text" class="form-control" id="new-family-group-desc" placeholder="예: OOO, OOO 형제"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">닫기</button><button type="button" class="btn btn-primary" id="save-student-btn">저장</button></div></div></div></div>
+  <div class="modal fade" id="payment-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">수강 신청 및 납부</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div><div class="modal-body"><form id="payment-form"><input type="hidden" id="payment-student-id"><input type="hidden" id="payment-student-name"><div class="form-group"><label>과목 선택</label><select class="form-control" id="subject-select" required></select></div><div class="form-group"><label>수강 개월</label><select class="form-control" id="months-select"><option value="1">1개월</option><option value="3">3개월 (할인)</option><option value="12">12개월 (할인)</option></select></div><hr><div class="text-right mb-3"><h5>예상 결제 금액: <span id="calculated-fee" class="font-weight-bold text-primary">0원</span></h5><small id="discount-details" class="text-muted"></small></div><div class="form-group"><label>결제 수단</label><select class="form-control" id="payment-method"><option>카드</option><option>현금</option><option>이체</option></select></div><div class="form-group" id="card-company-group"><label>카드사</label><input type="text" class="form-control" id="card-company" placeholder="카드사 입력"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-success" id="record-payment-btn">납부 기록</button><button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button></div></div></div></div>
+  <div class="modal fade" id="attendance-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">출결 및 진도 기록</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div><div class="modal-body"><form id="attendance-form"><input type="hidden" id="attendance-student-id"><input type="hidden" id="attendance-student-name"><div class="form-group"><label>수업 날짜</label><input type="date" class="form-control" id="class-date" required></div><div class="form-group"><label>출결 상태</label><select class="form-control" id="attendance-status"><option>출석</option><option>결석</option><option>보강</option></select></div><div id="progress-details" class="mt-3 border-top pt-3"><h5>진도 내용 (출석 시 자동 기록)</h5><div class="form-group"><label>과목</label><select class="form-control" id="progress-subject" required></select></div><div class="form-group"><label>수업 내용</label><textarea class="form-control" id="class-content" rows="3"></textarea></div><div class="form-group"><label>수업 선생님</label><input type="text" class="form-control" id="teacher-name"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-info" id="record-attendance-btn">기록 저장</button><button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button></div></div></div></div>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js'></script>
+  <?!= include('javascript.html'); ?>
+</body>
 </html>
